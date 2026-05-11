@@ -1,6 +1,7 @@
-import { useRef, useState, type ReactElement } from 'react'
+import { useRef, useState, type CSSProperties, type ReactElement } from 'react'
 import { useTerminalSession } from '../hooks/useTerminalSession'
 import { useSessionStore } from '../state/sessionStore'
+import { useWorkspaceStore } from '../state/workspaceStore'
 
 interface TerminalPaneProps {
   sessionId: string
@@ -12,15 +13,26 @@ export function TerminalPane({ sessionId, isActive, onFocus }: TerminalPaneProps
   const [container, setContainer] = useState<HTMLDivElement | null>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const session = useSessionStore((s) => s.sessions[sessionId])
+  const workspace = useWorkspaceStore((s) =>
+    session ? s.workspaces.find((w) => w.id === session.workspaceId) : null,
+  )
 
   useTerminalSession(sessionId, container)
+
+  const hue = workspace?.color?.hue
+  const wrapperStyle: CSSProperties | undefined =
+    hue !== undefined
+      ? ({ ['--ws-hue' as string]: `${hue}deg`, borderLeftColor: 'oklch(70% 0.15 var(--ws-hue))' } as CSSProperties)
+      : undefined
 
   return (
     <div
       ref={wrapperRef}
       onMouseDown={onFocus}
+      style={wrapperStyle}
       className={[
         'flex h-full w-full flex-col overflow-hidden rounded-md border bg-bg-elevated',
+        hue !== undefined ? 'border-l-4' : '',
         isActive ? 'border-accent ring-1 ring-accent/40' : 'border-border',
       ].join(' ')}
     >
