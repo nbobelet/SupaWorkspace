@@ -15,7 +15,7 @@ export default defineConfig({
       outDir: 'out/main',
       rollupOptions: {
         input: resolve(__dirname, 'apps/main/src/index.ts'),
-        external: ['node-pty', 'electron-store'],
+        external: ['@homebridge/node-pty-prebuilt-multiarch', 'electron-store'],
       },
     },
   },

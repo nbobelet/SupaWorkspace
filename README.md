@@ -64,6 +64,10 @@ pnpm dev
 # look for "[pty] hello world ok" in the main process logs
 ```
 
+### Known noise on Windows
+
+On Electron + ConPTY, `node-pty` spawns an auxiliary `conpty_console_list_agent.js` child process to enumerate console-attached PIDs for cleanup. In an Electron main process detached from a console, this agent's `AttachConsole` call fails and the child crashes. **This is cosmetic** — the actual PTY operations are unaffected. We do not log nor surface this to the user.
+
 ## Code signing
 
 Not configured. TODO before public distribution:

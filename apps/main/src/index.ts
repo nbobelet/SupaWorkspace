@@ -1,6 +1,7 @@
 import { app, BrowserWindow, shell } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { runPtySmoke } from './pty/smoke'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -48,7 +49,12 @@ function createWindow(): void {
   }
 }
 
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
+  const ptyOk = await runPtySmoke()
+  if (!ptyOk) {
+    console.error('[pty] smoke FAILED — node-pty cannot spawn. App will continue but PTY features are broken.')
+  }
+
   createWindow()
 
   app.on('activate', () => {
