@@ -7,10 +7,26 @@ A workspace is a folder on disk. Sessions spawned inside a workspace inherit its
 ## Features
 
 - **Per-workspace tab scoping** — terminal tabs are filtered by the active workspace; no cross-workspace bleed.
-- **Inline tab rename** — double-click a tab label to rename, persisted main-side. Same UX for workspace tiles.
-- **Notification center** — bell badge on each workspace tile, click for a popover of recent notifications; `sonner` toasts top-right for live transitions (waiting / finished / error).
+- **Workspace color + settings menu** — each workspace gets an auto-assigned OKLCH hue (curated 8-color palette, picker maximizes hue distance). Settings icon on tile hover opens a popover: Rename / Change color / Delete. Active terminal pane gets a left border matching the workspace color.
+- **Workspace delete cascade** — deleting a workspace kills its sessions, revokes its PathGrants, and clears its notifications.
+- **Markdown notes panel** — a 4th tab in Settings with a CodeMirror markdown editor. **Notes persist across workspace switches** (stored globally in `electron-store`).
+- **Inline tab rename** — double-click a tab label to rename. Same UX for workspace tiles; shared `useInlineRename` hook.
+- **Notification center** — bell badge on each workspace tile, click for a popover of recent notifications. Sonner toasts top-right for live transitions. Notifications for a workspace are cleared when you click into it.
 - **Keyboard shortcuts** — `Ctrl+K` palette, `Ctrl+Tab`/`Ctrl+1-9` session navigation, `Ctrl+T` new, `Ctrl+W` close, `Ctrl+Shift+[/]` workspaces. Full list in [docs/keyboard-shortcuts.md](docs/keyboard-shortcuts.md).
 - **Command palette** — `Ctrl+K` (`Cmd+K` on macOS) opens fuzzy search across workspaces, sessions, and quick actions.
+
+## Notifications
+
+Notifications use a 4-value `NotificationKind` enum (filtered emission, no idle PTY noise):
+
+| Kind                  | Trigger                                                                       |
+| --------------------- | ----------------------------------------------------------------------------- |
+| `request-complete`    | A Claude session transitions from `running` to `finished` (request done).     |
+| `user-input-required` | Buffer ends with a deterministic prompt marker (`[y/N]`, `Press any key`, sudo, OSC 133, `Do you want to allow…`). See `apps/main/src/notifications/detectUserInputRequired.ts`. |
+| `permission-prompt`   | A session asks for out-of-scope file access (PathGrant request).              |
+| `error`               | A session exits non-zero.                                                     |
+
+Each notification fans out to both an in-app toast and (when the window is unfocused or minimized) an OS `Notification`. Clicking a workspace tile clears its notifications.
 
 ## Requirements
 

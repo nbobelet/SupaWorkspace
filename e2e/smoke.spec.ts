@@ -62,7 +62,7 @@ test('smoke: workspace listed, spawn shell, echo ok appears', async () => {
 
   await expect(page.getByText('e2e-workspace').first()).toBeVisible({ timeout: 10_000 })
 
-  await page.getByRole('button', { name: '+ shell' }).first().click()
+  await page.getByRole('button', { name: 'New shell session' }).first().click()
 
   const xtermViewport = page.locator('.xterm-screen').first()
   await expect(xtermViewport).toBeVisible({ timeout: 10_000 })
