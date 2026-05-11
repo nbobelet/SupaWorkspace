@@ -5,9 +5,11 @@ import { runPtySmoke } from './pty/smoke'
 import { SessionManager } from './pty/SessionManager'
 import { WorkspaceStore } from './workspace/WorkspaceStore'
 import { Notifier } from './notifications/Notifier'
+import { NotesStore } from './notes/NotesStore'
 import { registerSessionIpc } from './ipc/session'
 import { registerWorkspaceIpc } from './ipc/workspace'
 import { registerPermissionsIpc } from './ipc/permissions'
+import { registerNotesIpc } from './ipc/notes'
 import { IpcChannel } from '@shared/ipc'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -76,6 +78,7 @@ void app.whenReady().then(async () => {
   }
 
   const workspaceStore = new WorkspaceStore()
+  const notesStore = new NotesStore()
   const notifier = new Notifier(getMainWindow, workspaceStore)
   const sessionManager = new SessionManager({
     onData: (sessionId, data) => broadcast(IpcChannel.SessionData, { sessionId, data }),
@@ -97,6 +100,7 @@ void app.whenReady().then(async () => {
   })
   registerWorkspaceIpc({ workspaceStore, sessionManager, getMainWindow })
   registerPermissionsIpc({ workspaceStore, getMainWindow, notifier })
+  registerNotesIpc({ notesStore })
 
   createWindow()
 

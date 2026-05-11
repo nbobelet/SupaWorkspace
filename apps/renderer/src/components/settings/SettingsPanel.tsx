@@ -2,18 +2,20 @@ import { useState, type ReactElement } from 'react'
 import { ClaudeMdEditor } from './ClaudeMdEditor'
 import { McpServersEditor } from './McpServersEditor'
 import { PermissionsManager } from './PermissionsManager'
+import { NotesTab } from './NotesTab'
 
 interface SettingsPanelProps {
   workspaceId: string
   onClose: () => void
 }
 
-type SettingsTab = 'claude-md' | 'mcp' | 'permissions'
+type SettingsTab = 'claude-md' | 'mcp' | 'permissions' | 'notes'
 
 const TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'claude-md', label: 'CLAUDE.md' },
   { id: 'mcp', label: 'MCP servers' },
   { id: 'permissions', label: 'Permissions' },
+  { id: 'notes', label: 'Notes' },
 ]
 
 export function SettingsPanel({ workspaceId, onClose }: SettingsPanelProps): ReactElement {
@@ -57,6 +59,7 @@ export function SettingsPanel({ workspaceId, onClose }: SettingsPanelProps): Rea
         {tab === 'claude-md' && <ClaudeMdEditor workspaceId={workspaceId} />}
         {tab === 'mcp' && <McpServersEditor workspaceId={workspaceId} />}
         {tab === 'permissions' && <PermissionsManager workspaceId={workspaceId} />}
+        {tab === 'notes' && <NotesTab />}
       </div>
     </aside>
   )
