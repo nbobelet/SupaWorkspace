@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, type ReactElement } from 'react'
 import { useScopedOrder, useSessionStore } from '../state/sessionStore'
 import { useWorkspaceStore } from '../state/workspaceStore'
+import { useInlineRename } from '../hooks/useInlineRename'
 import type { SessionType } from '@shared/session'
 
 export function SessionTabs(): ReactElement {
@@ -13,9 +14,16 @@ export function SessionTabs(): ReactElement {
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const scopedOrder = useScopedOrder()
 
-  const [renaming, setRenaming] = useState<string | null>(null)
-  const [renameValue, setRenameValue] = useState('')
-  const renameTriggeredFor = useRef<string | null>(null)
+  const rename = useInlineRename(async (id, newLabel) => {
+    const existing = sessions[id]
+    if (!existing || existing.label === newLabel) return
+    try {
+      const res = await window.ws.session.rename({ sessionId: id, label: newLabel })
+      renameSession(id, res.label)
+    } catch (err) {
+      console.error('[session] rename failed', err)
+    }
+  })
 
   useEffect(() => {
     const handler = (e: Event): void => {
@@ -23,39 +31,19 @@ export function SessionTabs(): ReactElement {
       if (!detail?.sessionId) return
       const target = sessions[detail.sessionId]
       if (!target) return
-      renameTriggeredFor.current = detail.sessionId
-      setRenameValue(target.label)
-      setRenaming(detail.sessionId)
+      rename.startRename(detail.sessionId, target.label)
     }
     window.addEventListener('session:rename-request', handler)
     return () => window.removeEventListener('session:rename-request', handler)
-  }, [sessions])
+  }, [sessions, rename])
 
   const startRename = useCallback(
     (id: string) => {
       const target = sessions[id]
       if (!target) return
-      setRenameValue(target.label)
-      setRenaming(id)
+      rename.startRename(id, target.label)
     },
-    [sessions],
-  )
-
-  const commitRename = useCallback(
-    async (id: string) => {
-      const trimmed = renameValue.trim()
-      setRenaming(null)
-      if (!trimmed) return
-      const existing = sessions[id]
-      if (!existing || existing.label === trimmed) return
-      try {
-        const res = await window.ws.session.rename({ sessionId: id, label: trimmed })
-        renameSession(id, res.label)
-      } catch (err) {
-        console.error('[session] rename failed', err)
-      }
-    },
-    [renameValue, renameSession, sessions],
+    [sessions, rename],
   )
 
   const spawn = useCallback(
@@ -85,7 +73,7 @@ export function SessionTabs(): ReactElement {
         const s = sessions[id]
         if (!s) return null
         const isActive = id === activeId
-        const isRenaming = renaming === id
+        const isRenaming = rename.isRenaming(id)
         const showBadge = s.hasUnseenWaiting && !isActive
         return (
           <div
@@ -118,12 +106,12 @@ export function SessionTabs(): ReactElement {
               {isRenaming ? (
                 <input
                   autoFocus
-                  value={renameValue}
-                  onChange={(e) => setRenameValue(e.target.value)}
-                  onBlur={() => void commitRename(id)}
+                  value={rename.renameValue}
+                  onChange={(e) => rename.setRenameValue(e.target.value)}
+                  onBlur={() => void rename.commitRename(id)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') void commitRename(id)
-                    if (e.key === 'Escape') setRenaming(null)
+                    if (e.key === 'Enter') void rename.commitRename(id)
+                    if (e.key === 'Escape') rename.cancelRename()
                   }}
                   onClick={(e) => e.stopPropagation()}
                   className="w-32 bg-bg px-1 py-0 font-mono text-xs outline-none ring-1 ring-accent"

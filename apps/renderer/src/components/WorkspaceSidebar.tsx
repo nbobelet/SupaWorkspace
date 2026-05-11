@@ -7,6 +7,7 @@ import {
   type RendererNotification,
 } from '../state/notificationStore'
 import { useSessionStore } from '../state/sessionStore'
+import { useInlineRename } from '../hooks/useInlineRename'
 import type { Workspace } from '@shared/workspace'
 
 interface ContextMenuState {
@@ -33,9 +34,12 @@ export function WorkspaceSidebar({ onSettingsToggle, settingsOpen }: WorkspaceSi
   const setActiveSession = useSessionStore((s) => s.setActive)
 
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
-  const [renaming, setRenaming] = useState<string | null>(null)
-  const [renameValue, setRenameValue] = useState('')
   const [bellOpen, setBellOpen] = useState<string | null>(null)
+
+  const rename = useInlineRename(async (id, newName) => {
+    const updated = await window.ws.workspace.rename(id, newName)
+    upsertWorkspace(updated)
+  })
 
   useEffect(() => {
     const close = (): void => {
@@ -55,12 +59,11 @@ export function WorkspaceSidebar({ onSettingsToggle, settingsOpen }: WorkspaceSi
       if (!activeWorkspaceId) return
       const target = workspaces.find((w) => w.id === activeWorkspaceId)
       if (!target) return
-      setRenameValue(target.name)
-      setRenaming(target.id)
+      rename.startRename(target.id, target.name)
     }
     window.addEventListener('workspace:rename-active', handler)
     return () => window.removeEventListener('workspace:rename-active', handler)
-  }, [activeWorkspaceId, workspaces])
+  }, [activeWorkspaceId, workspaces, rename])
 
   const openWorkspace = useCallback(async () => {
     const res = await window.ws.workspace.open()
@@ -75,21 +78,12 @@ export function WorkspaceSidebar({ onSettingsToggle, settingsOpen }: WorkspaceSi
     setMenu({ workspace, x: e.clientX, y: e.clientY })
   }, [])
 
-  const startRename = useCallback((workspace: Workspace) => {
-    setRenaming(workspace.id)
-    setRenameValue(workspace.name)
-    setMenu(null)
-  }, [])
-
-  const commitRename = useCallback(
-    async (id: string) => {
-      const trimmed = renameValue.trim()
-      setRenaming(null)
-      if (!trimmed) return
-      const updated = await window.ws.workspace.rename(id, trimmed)
-      upsertWorkspace(updated)
+  const startRenameFromMenu = useCallback(
+    (workspace: Workspace) => {
+      rename.startRename(workspace.id, workspace.name)
+      setMenu(null)
     },
-    [renameValue, upsertWorkspace],
+    [rename],
   )
 
   const remove = useCallback(
@@ -141,11 +135,11 @@ export function WorkspaceSidebar({ onSettingsToggle, settingsOpen }: WorkspaceSi
             key={w.id}
             workspace={w}
             isActive={w.id === activeWorkspaceId}
-            isRenaming={renaming === w.id}
-            renameValue={renameValue}
-            onRenameChange={setRenameValue}
-            onRenameCommit={commitRename}
-            onRenameCancel={() => setRenaming(null)}
+            isRenaming={rename.isRenaming(w.id)}
+            renameValue={rename.renameValue}
+            onRenameChange={rename.setRenameValue}
+            onRenameCommit={rename.commitRename}
+            onRenameCancel={rename.cancelRename}
             onActivate={() => setActiveWorkspace(w.id)}
             onContextMenu={handleContextMenu}
             notifications={notifications}
@@ -178,7 +172,7 @@ export function WorkspaceSidebar({ onSettingsToggle, settingsOpen }: WorkspaceSi
           x={menu.x}
           y={menu.y}
           items={[
-            { label: 'Rename', onClick: () => startRename(menu.workspace) },
+            { label: 'Rename', onClick: () => startRenameFromMenu(menu.workspace) },
             { label: 'Reveal in explorer', onClick: () => void reveal(menu.workspace.id) },
             { label: 'Remove from list', onClick: () => void remove(menu.workspace.id), danger: true },
           ]}
