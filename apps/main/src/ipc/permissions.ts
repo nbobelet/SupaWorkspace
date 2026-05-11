@@ -10,12 +10,14 @@ import {
 import type { PathGrant, Workspace } from '@shared/workspace'
 import { PermissionGate } from '../security/PermissionGate'
 import type { WorkspaceStore } from '../workspace/WorkspaceStore'
+import type { Notifier } from '../notifications/Notifier'
 
 export function registerPermissionsIpc(opts: {
   workspaceStore: WorkspaceStore
   getMainWindow: () => BrowserWindow | null
+  notifier: Notifier
 }): () => void {
-  const { workspaceStore, getMainWindow } = opts
+  const { workspaceStore, getMainWindow, notifier } = opts
 
   ipcMain.handle(
     IpcChannel.PermissionsRequestPath,
@@ -32,6 +34,8 @@ export function registerPermissionsIpc(opts: {
           grant: null,
         }
       }
+
+      notifier.emitPermissionPrompt(workspace.id, absolutePath, req.kind)
 
       const win = getMainWindow()
       const buttons = ['Deny', 'Allow once', 'Always allow']

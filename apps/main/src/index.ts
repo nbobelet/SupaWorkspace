@@ -96,7 +96,7 @@ void app.whenReady().then(async () => {
     onRename: (cfg) => notifier.updateSession(cfg),
   })
   registerWorkspaceIpc({ workspaceStore, getMainWindow })
-  registerPermissionsIpc({ workspaceStore, getMainWindow })
+  registerPermissionsIpc({ workspaceStore, getMainWindow, notifier })
 
   createWindow()
 
