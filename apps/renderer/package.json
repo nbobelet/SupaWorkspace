@@ -1,5 +1,5 @@
 {
-  "name": "@claude-workspace/renderer",
+  "name": "@supa-workspace/renderer",
   "version": "0.1.0",
   "private": true,
   "type": "module"

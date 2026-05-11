@@ -93,6 +93,6 @@ const api = {
   },
 }
 
-export type ClaudeWorkspaceApi = typeof api
+export type SupaWorkspaceApi = typeof api
 
 contextBridge.exposeInMainWorld('ws', api)

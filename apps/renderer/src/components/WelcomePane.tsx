@@ -56,7 +56,7 @@ export function WelcomePane(): ReactElement {
           <div className="grid h-14 w-14 place-items-center rounded-lg border border-border bg-bg-elevated text-2xl">
             <span aria-hidden="true">▣</span>
           </div>
-          <h1 className="text-lg font-semibold tracking-tight">ClaudeWorkspace</h1>
+          <h1 className="text-lg font-semibold tracking-tight">SupaWorkspace</h1>
           <p className="text-xs text-muted">Multi-session terminal workspace for the claude CLI.</p>
         </div>
 

@@ -58,8 +58,6 @@ test.afterAll(async () => {
 })
 
 test('smoke: workspace listed, spawn shell, echo ok appears', async () => {
-  await expect(page.getByText('ClaudeWorkspace').first()).toBeVisible({ timeout: 10_000 })
-
   await expect(page.getByText('e2e-workspace').first()).toBeVisible({ timeout: 10_000 })
 
   await page.getByRole('button', { name: 'New shell session' }).first().click()
@@ -68,7 +66,7 @@ test('smoke: workspace listed, spawn shell, echo ok appears', async () => {
   await expect(xtermViewport).toBeVisible({ timeout: 10_000 })
 
   await xtermViewport.click()
-  await page.keyboard.type('echo claude-workspace-ok')
+  await page.keyboard.type('echo supa-workspace-ok')
   await page.keyboard.press('Enter')
 
   await expect
@@ -83,7 +81,7 @@ test('smoke: workspace listed, spawn shell, echo ok appears', async () => {
       },
       { timeout: 15_000 },
     )
-    .toContain('claude-workspace-ok')
+    .toContain('supa-workspace-ok')
 })
 
 test('Ctrl+T spawns a new tab in the active workspace only', async () => {

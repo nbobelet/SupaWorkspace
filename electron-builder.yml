@@ -1,5 +1,5 @@
-appId: dev.claudeworkspace.app
-productName: ClaudeWorkspace
+appId: dev.supaworkspace.app
+productName: SupaWorkspace
 copyright: Copyright © 2026
 
 npmRebuild: false

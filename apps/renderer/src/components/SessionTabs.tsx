@@ -76,8 +76,25 @@ export function SessionTabs(): ReactElement {
     [activeWorkspaceId, addSession],
   )
 
+  const wsHue = activeWorkspace?.color?.hue
+  const wsPillStyle = wsHue !== undefined ? { background: `oklch(70% 0.15 ${wsHue}deg)` } : undefined
+
   return (
     <div className="flex items-center gap-1 border-b border-border bg-bg-sunken px-2 py-1 text-xs">
+      {activeWorkspace && (
+        <div className="mr-2 flex shrink-0 items-center gap-1.5 border-r border-border pr-3">
+          {wsHue !== undefined && (
+            <span
+              className="h-2 w-2 shrink-0 rounded-full"
+              style={wsPillStyle}
+              aria-hidden="true"
+            />
+          )}
+          <span className="truncate font-semibold tracking-tight text-fg" title={activeWorkspace.name}>
+            {activeWorkspace.name}
+          </span>
+        </div>
+      )}
       {scopedOrder.map((id) => {
         const s = sessions[id]
         if (!s) return null

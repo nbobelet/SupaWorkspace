@@ -1,10 +1,10 @@
 /// <reference types="vite/client" />
 
-import type { ClaudeWorkspaceApi } from '../../preload/src/index'
+import type { SupaWorkspaceApi } from '../../preload/src/index'
 
 declare global {
   interface Window {
-    ws: ClaudeWorkspaceApi
+    ws: SupaWorkspaceApi
   }
 }
 

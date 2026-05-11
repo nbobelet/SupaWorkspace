@@ -1,8 +1,8 @@
 {
-  "name": "claude-workspace",
+  "name": "supa-workspace",
   "version": "0.1.0",
   "private": true,
-  "description": "Multi-session terminal workspace manager for the claude CLI",
+  "description": "SupaWorkspace — multi-session terminal workspace manager for the claude CLI",
   "type": "module",
   "packageManager": "pnpm@11.0.9",
   "main": "./out/main/index.js",

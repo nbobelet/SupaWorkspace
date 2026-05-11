@@ -1,4 +1,4 @@
-# ClaudeWorkspace
+# SupaWorkspace
 
 Multi-session terminal workspace manager for the `claude` CLI and shell sessions. Built with Electron, React 19, xterm.js, and node-pty.
 

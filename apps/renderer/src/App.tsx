@@ -153,8 +153,7 @@ export function App(): ReactElement {
       <WorkspaceSidebar settingsOpen={settingsOpen} onSettingsToggle={() => setSettingsOpen((v) => !v)} />
 
       <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex items-center justify-between border-b border-border bg-bg-sunken px-3 py-1.5 text-xs">
-          <span className="font-semibold tracking-tight">ClaudeWorkspace</span>
+        <header className="flex items-center justify-end border-b border-border bg-bg-sunken px-3 py-1.5 text-xs">
           <LayoutSwitcher />
         </header>
         <SessionTabs />
