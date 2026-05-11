@@ -7,6 +7,8 @@ import type {
   SessionDataEvent,
   SessionExitEvent,
   SessionKillRequest,
+  SessionRenameRequest,
+  SessionRenameResponse,
   SessionResizeRequest,
   SessionSpawnRequest,
   SessionSpawnResponse,
@@ -19,6 +21,7 @@ import type {
   ClaudeSettings,
 } from '@shared/ipc'
 import { IpcChannel } from '@shared/ipc'
+import type { NotificationPushEvent } from '@shared/notification'
 import type { Workspace } from '@shared/workspace'
 
 type Unsubscribe = () => void
@@ -38,6 +41,8 @@ const api = {
     write: (req: SessionWriteRequest): Promise<void> => ipcRenderer.invoke(IpcChannel.SessionWrite, req),
     resize: (req: SessionResizeRequest): Promise<void> => ipcRenderer.invoke(IpcChannel.SessionResize, req),
     kill: (req: SessionKillRequest): Promise<void> => ipcRenderer.invoke(IpcChannel.SessionKill, req),
+    rename: (req: SessionRenameRequest): Promise<SessionRenameResponse> =>
+      ipcRenderer.invoke(IpcChannel.SessionRename, req),
     onData: (listener: (event: SessionDataEvent) => void): Unsubscribe =>
       on<SessionDataEvent>(IpcChannel.SessionData, listener),
     onExit: (listener: (event: SessionExitEvent) => void): Unsubscribe =>
@@ -70,6 +75,10 @@ const api = {
       ipcRenderer.invoke(IpcChannel.PermissionsRequestPath, req),
     revokePath: (req: PermissionsRevokePathRequest): Promise<Workspace> =>
       ipcRenderer.invoke(IpcChannel.PermissionsRevokePath, req),
+  },
+  notifications: {
+    onPush: (listener: (event: NotificationPushEvent) => void): Unsubscribe =>
+      on<NotificationPushEvent>(IpcChannel.NotifPush, listener),
   },
 }
 

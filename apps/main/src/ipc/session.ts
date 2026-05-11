@@ -2,9 +2,11 @@ import { ipcMain } from 'electron'
 import {
   IpcChannel,
   SessionKillRequest,
+  SessionRenameRequest,
   SessionResizeRequest,
   SessionSpawnRequest,
   SessionWriteRequest,
+  type SessionRenameResponse,
   type SessionSpawnResponse,
 } from '@shared/ipc'
 import type { SessionConfig } from '@shared/session'
@@ -15,8 +17,9 @@ export function registerSessionIpc(opts: {
   sessionManager: SessionManager
   workspaceStore: WorkspaceStore
   onSpawn?: (config: SessionConfig) => void
+  onRename?: (config: SessionConfig) => void
 }): () => void {
-  const { sessionManager, workspaceStore, onSpawn } = opts
+  const { sessionManager, workspaceStore, onSpawn, onRename } = opts
 
   ipcMain.handle(IpcChannel.SessionSpawn, async (_, raw): Promise<SessionSpawnResponse> => {
     const req = SessionSpawnRequest.parse(raw)
@@ -49,10 +52,19 @@ export function registerSessionIpc(opts: {
     sessionManager.kill(req.sessionId)
   })
 
+  ipcMain.handle(IpcChannel.SessionRename, async (_, raw): Promise<SessionRenameResponse> => {
+    const req = SessionRenameRequest.parse(raw)
+    const updated = sessionManager.rename(req.sessionId, req.label)
+    if (!updated) throw new Error(`Unknown session: ${req.sessionId}`)
+    onRename?.(updated)
+    return { sessionId: updated.id, label: updated.label }
+  })
+
   return () => {
     ipcMain.removeHandler(IpcChannel.SessionSpawn)
     ipcMain.removeHandler(IpcChannel.SessionWrite)
     ipcMain.removeHandler(IpcChannel.SessionResize)
     ipcMain.removeHandler(IpcChannel.SessionKill)
+    ipcMain.removeHandler(IpcChannel.SessionRename)
   }
 }

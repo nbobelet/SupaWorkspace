@@ -7,6 +7,7 @@ export const IpcChannel = {
   SessionWrite: 'session:write',
   SessionResize: 'session:resize',
   SessionKill: 'session:kill',
+  SessionRename: 'session:rename',
   SessionData: 'session:data',
   SessionExit: 'session:exit',
   SessionState: 'session:state',
@@ -22,6 +23,7 @@ export const IpcChannel = {
   WorkspaceWriteSettings: 'workspace:write-settings',
   PermissionsRequestPath: 'permissions:request-path',
   PermissionsRevokePath: 'permissions:revoke-path',
+  NotifPush: 'notif:push',
 } as const
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel]
 
@@ -57,6 +59,18 @@ export const SessionKillRequest = z.object({
   sessionId: z.string().uuid(),
 })
 export type SessionKillRequest = z.infer<typeof SessionKillRequest>
+
+export const SessionRenameRequest = z.object({
+  sessionId: z.string().uuid(),
+  label: z.string().trim().min(1).max(100),
+})
+export type SessionRenameRequest = z.infer<typeof SessionRenameRequest>
+
+export const SessionRenameResponse = z.object({
+  sessionId: z.string().uuid(),
+  label: z.string(),
+})
+export type SessionRenameResponse = z.infer<typeof SessionRenameResponse>
 
 export const SessionDataEvent = z.object({
   sessionId: z.string().uuid(),

@@ -1,6 +1,9 @@
-import { BrowserWindow, Notification } from 'electron'
+import { randomUUID } from 'node:crypto'
+import type { BrowserWindow } from 'electron'
+import { Notification } from 'electron'
 import type { SessionConfig, SessionState } from '@shared/session'
 import { IpcChannel } from '@shared/ipc'
+import type { NotificationKind, NotificationPushEvent } from '@shared/notification'
 import type { WorkspaceStore } from '../workspace/WorkspaceStore'
 
 export class Notifier {
@@ -17,6 +20,12 @@ export class Notifier {
     this.previousState.set(config.id, 'idle')
   }
 
+  updateSession(config: SessionConfig): void {
+    if (this.sessions.has(config.id)) {
+      this.sessions.set(config.id, config)
+    }
+  }
+
   unregisterSession(sessionId: string): void {
     this.sessions.delete(sessionId)
     this.previousState.delete(sessionId)
@@ -31,18 +40,37 @@ export class Notifier {
     if (!session) return
 
     if (state === 'waiting-for-input') {
+      this.emit(session, 'waiting')
       this.maybeNotify(session, 'Claude needs input', 'waiting for permission or prompt')
       return
     }
 
     if (state === 'finished' && session.type === 'claude' && previous === 'running') {
+      this.emit(session, 'finished')
       this.maybeNotify(session, 'Claude finished', 'session is idle')
       return
     }
 
     if (state === 'error') {
+      this.emit(session, 'error')
       this.maybeNotify(session, 'Session errored', `${session.label} exited with error`)
     }
+  }
+
+  private emit(session: SessionConfig, kind: NotificationKind): void {
+    const win = this.getMainWindow()
+    if (!win || win.isDestroyed()) return
+    const workspace = this.workspaceStore.getById(session.workspaceId)
+    const payload: NotificationPushEvent = {
+      id: randomUUID(),
+      workspaceId: session.workspaceId,
+      sessionId: session.id,
+      sessionLabel: session.label,
+      workspaceName: workspace?.name ?? 'workspace',
+      kind,
+      ts: Date.now(),
+    }
+    win.webContents.send(IpcChannel.NotifPush, payload)
   }
 
   private maybeNotify(session: SessionConfig, title: string, hint: string): void {

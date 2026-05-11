@@ -1,0 +1,41 @@
+diff --git a/lib/conpty_console_list_agent.js b/lib/conpty_console_list_agent.js
+index e5217ef657b54b3c89e3ff55f893f60a53d4db61..842eaab1200134633a3b82e38b06f79d155572ee 100644
+--- a/lib/conpty_console_list_agent.js
++++ b/lib/conpty_console_list_agent.js
+@@ -2,19 +2,28 @@
+ /**
+  * Copyright (c) 2019, Microsoft Corporation (MIT License).
+  *
+- * This module fetches the console process list for a particular PID. It must be
+- * called from a different process (child_process.fork) as there can only be a
+- * single console attached to a process.
++ * Patched: in Electron's main process (no attached console), the native
++ * `conpty_console_list.node` throws "AttachConsole failed" and the forked agent
++ * crashes with a noisy stack trace. The parent (windowsPtyAgent) already
++ * tolerates this — it falls back to [shellPid] on timeout. We do the same on
++ * error, silently, so PTY teardown stays clean. The prebuilt may also be
++ * missing, so guard the require too.
+  */
+-var getConsoleProcessList;
++var shellPid = parseInt(process.argv[2], 10);
++var consoleProcessList = [shellPid];
+ try {
+-    getConsoleProcessList = require('../build/Release/conpty_console_list.node').getConsoleProcessList;
++    var getConsoleProcessList;
++    try {
++        getConsoleProcessList = require('../build/Release/conpty_console_list.node').getConsoleProcessList;
++    }
++    catch (err1) {
++        getConsoleProcessList = require('../build/Debug/conpty_console_list.node').getConsoleProcessList;
++    }
++    consoleProcessList = getConsoleProcessList(shellPid);
+ }
+ catch (err) {
+-    getConsoleProcessList = require('../build/Debug/conpty_console_list.node').getConsoleProcessList;
++    consoleProcessList = [shellPid];
+ }
+-var shellPid = parseInt(process.argv[2], 10);
+-var consoleProcessList = getConsoleProcessList(shellPid);
+ process.send({ consoleProcessList: consoleProcessList });
+ process.exit(0);
+ //# sourceMappingURL=conpty_console_list_agent.js.map

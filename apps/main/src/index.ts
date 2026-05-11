@@ -33,7 +33,7 @@ function createWindow(): void {
     backgroundColor: '#0a0a0a',
     autoHideMenuBar: true,
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      preload: join(__dirname, '../preload/index.mjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
@@ -89,7 +89,12 @@ void app.whenReady().then(async () => {
     },
   })
 
-  registerSessionIpc({ sessionManager, workspaceStore, onSpawn: (cfg) => notifier.registerSession(cfg) })
+  registerSessionIpc({
+    sessionManager,
+    workspaceStore,
+    onSpawn: (cfg) => notifier.registerSession(cfg),
+    onRename: (cfg) => notifier.updateSession(cfg),
+  })
   registerWorkspaceIpc({ workspaceStore, getMainWindow })
   registerPermissionsIpc({ workspaceStore, getMainWindow })
 

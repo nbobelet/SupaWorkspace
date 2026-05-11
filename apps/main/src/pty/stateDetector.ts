@@ -1,5 +1,6 @@
 import type { SessionState } from '@shared/session'
 
+/* eslint-disable no-control-regex -- ESC byte required for OSC 133 prompt detection */
 const WAITING_SENTINELS: RegExp[] = [
   /\bDo you want to allow\b/i,
   /\b\(y\/n\)\b/i,
@@ -10,6 +11,7 @@ const WAITING_SENTINELS: RegExp[] = [
   /❯/,
   /\]133;[A-D]/,
 ]
+/* eslint-enable no-control-regex */
 
 const IDLE_AFTER_WRITE_MS = 800
 const RECENT_BUFFER_CAP = 4096

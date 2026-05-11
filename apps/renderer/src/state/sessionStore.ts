@@ -1,5 +1,7 @@
+import { useMemo } from 'react'
 import { create } from 'zustand'
 import type { SessionState, SessionType } from '@shared/session'
+import { useWorkspaceStore } from './workspaceStore'
 
 export interface RendererSession {
   id: string
@@ -22,6 +24,7 @@ interface SessionStoreState {
   setActive: (id: string | null) => void
   clearWaitingBadge: (id: string) => void
   setLastUsedType: (type: SessionType) => void
+  renameSession: (id: string, label: string) => void
 }
 
 export const useSessionStore = create<SessionStoreState>((set) => ({
@@ -79,4 +82,32 @@ export const useSessionStore = create<SessionStoreState>((set) => ({
     }),
 
   setLastUsedType: (type) => set({ lastUsedType: type }),
+
+  renameSession: (id, label) =>
+    set((prev) => {
+      const existing = prev.sessions[id]
+      if (!existing) return prev
+      return {
+        sessions: { ...prev.sessions, [id]: { ...existing, label } },
+      }
+    }),
 }))
+
+export function scopeOrder(
+  order: string[],
+  sessions: Record<string, RendererSession>,
+  workspaceId: string | null,
+): string[] {
+  if (!workspaceId) return []
+  return order.filter((id) => sessions[id]?.workspaceId === workspaceId)
+}
+
+export function useScopedOrder(): string[] {
+  const order = useSessionStore((s) => s.order)
+  const sessions = useSessionStore((s) => s.sessions)
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
+  return useMemo(
+    () => scopeOrder(order, sessions, activeWorkspaceId),
+    [order, sessions, activeWorkspaceId],
+  )
+}

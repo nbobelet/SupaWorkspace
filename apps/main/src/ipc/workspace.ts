@@ -1,16 +1,18 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { dialog, ipcMain, shell, BrowserWindow } from 'electron'
+import type { BrowserWindow } from 'electron';
+import { dialog, ipcMain, shell } from 'electron'
+import type {
+  WorkspaceListResponse,
+  WorkspaceOpenResponse,
+  WorkspaceReadClaudeMdResponse,
+  WorkspaceReadSettingsResponse} from '@shared/ipc';
 import {
   ClaudeSettingsSchema,
   IpcChannel,
-  WorkspaceListResponse,
-  WorkspaceOpenResponse,
   WorkspaceReadClaudeMdRequest,
-  WorkspaceReadClaudeMdResponse,
   WorkspaceReadSettingsRequest,
-  WorkspaceReadSettingsResponse,
   WorkspaceRemoveRequest,
   WorkspaceRenameRequest,
   WorkspaceRevealRequest,

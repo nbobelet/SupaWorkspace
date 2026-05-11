@@ -111,6 +111,22 @@ function getOrCreateHandle(sessionId: string): TerminalHandle {
   return handle
 }
 
+function readTerminalBuffer(sessionId: string): string | null {
+  const handle = handles.get(sessionId)
+  if (!handle) return null
+  const buf = handle.term.buffer.active
+  const lines: string[] = []
+  for (let i = 0; i < buf.length; i++) {
+    const line = buf.getLine(i)
+    if (line) lines.push(line.translateToString(true))
+  }
+  return lines.join('\n')
+}
+
+if (typeof window !== 'undefined') {
+  ;(window as unknown as { __readTerminal?: typeof readTerminalBuffer }).__readTerminal = readTerminalBuffer
+}
+
 export function useTerminalSession(sessionId: string, container: HTMLElement | null): void {
   useEffect(() => {
     ensureGlobalListeners()

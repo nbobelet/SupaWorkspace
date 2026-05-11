@@ -114,6 +114,17 @@ export class SessionManager {
     return [...this.sessions.values()].map((s) => s.config)
   }
 
+  getConfig(sessionId: string): SessionConfig | undefined {
+    return this.sessions.get(sessionId)?.config
+  }
+
+  rename(sessionId: string, label: string): SessionConfig | undefined {
+    const session = this.sessions.get(sessionId)
+    if (!session) return undefined
+    session.config = { ...session.config, label }
+    return session.config
+  }
+
   private resolveCommand(type: SessionType, label?: string): {
     command: string
     args: string[]

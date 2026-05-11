@@ -1,16 +1,62 @@
-import { useCallback, type ReactElement } from 'react'
-import { useSessionStore } from '../state/sessionStore'
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
+import { useScopedOrder, useSessionStore } from '../state/sessionStore'
 import { useWorkspaceStore } from '../state/workspaceStore'
 import type { SessionType } from '@shared/session'
 
 export function SessionTabs(): ReactElement {
-  const order = useSessionStore((s) => s.order)
   const sessions = useSessionStore((s) => s.sessions)
   const activeId = useSessionStore((s) => s.activeId)
   const setActive = useSessionStore((s) => s.setActive)
   const addSession = useSessionStore((s) => s.addSession)
+  const renameSession = useSessionStore((s) => s.renameSession)
   const lastUsedType = useSessionStore((s) => s.lastUsedType)
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
+  const scopedOrder = useScopedOrder()
+
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const renameTriggeredFor = useRef<string | null>(null)
+
+  useEffect(() => {
+    const handler = (e: Event): void => {
+      const detail = (e as CustomEvent<{ sessionId: string }>).detail
+      if (!detail?.sessionId) return
+      const target = sessions[detail.sessionId]
+      if (!target) return
+      renameTriggeredFor.current = detail.sessionId
+      setRenameValue(target.label)
+      setRenaming(detail.sessionId)
+    }
+    window.addEventListener('session:rename-request', handler)
+    return () => window.removeEventListener('session:rename-request', handler)
+  }, [sessions])
+
+  const startRename = useCallback(
+    (id: string) => {
+      const target = sessions[id]
+      if (!target) return
+      setRenameValue(target.label)
+      setRenaming(id)
+    },
+    [sessions],
+  )
+
+  const commitRename = useCallback(
+    async (id: string) => {
+      const trimmed = renameValue.trim()
+      setRenaming(null)
+      if (!trimmed) return
+      const existing = sessions[id]
+      if (!existing || existing.label === trimmed) return
+      try {
+        const res = await window.ws.session.rename({ sessionId: id, label: trimmed })
+        renameSession(id, res.label)
+      } catch (err) {
+        console.error('[session] rename failed', err)
+      }
+    },
+    [renameValue, renameSession, sessions],
+  )
 
   const spawn = useCallback(
     async (type: SessionType) => {
@@ -35,16 +81,15 @@ export function SessionTabs(): ReactElement {
 
   return (
     <div className="flex items-center gap-1 border-b border-border bg-bg-sunken px-2 py-1 text-xs">
-      {order.map((id) => {
+      {scopedOrder.map((id) => {
         const s = sessions[id]
         if (!s) return null
         const isActive = id === activeId
+        const isRenaming = renaming === id
         const showBadge = s.hasUnseenWaiting && !isActive
         return (
-          <button
+          <div
             key={id}
-            type="button"
-            onClick={() => setActive(id)}
             className={[
               'group flex items-center gap-2 rounded-sm border px-2 py-1 transition-colors',
               isActive
@@ -52,26 +97,49 @@ export function SessionTabs(): ReactElement {
                 : 'border-border bg-bg-elevated/40 text-fg-subtle hover:border-border-strong hover:text-fg',
             ].join(' ')}
             aria-current={isActive ? 'true' : undefined}
-            aria-label={`${s.label} session, state ${s.state}${showBadge ? ', waiting for input' : ''}`}
           >
-            <span
-              className={[
-                'h-1.5 w-1.5 rounded-full',
-                s.state === 'running' ? 'bg-running' : '',
-                s.state === 'waiting-for-input' ? 'bg-warn motion-safe:animate-pulse' : '',
-                s.state === 'finished' ? 'bg-accent' : '',
-                s.state === 'error' ? 'bg-error' : '',
-                s.state === 'idle' ? 'bg-muted' : '',
-              ].join(' ')}
-            />
-            <span className="font-mono">{s.label}</span>
-            {showBadge && (
+            <button
+              type="button"
+              onClick={() => !isRenaming && setActive(id)}
+              onDoubleClick={() => startRename(id)}
+              className="flex items-center gap-2"
+              aria-label={`${s.label} session, state ${s.state}${showBadge ? ', waiting for input' : ''}`}
+            >
               <span
-                aria-live="polite"
-                className="h-1.5 w-1.5 rounded-full bg-warn motion-safe:animate-pulse"
-                title="Waiting for input"
+                className={[
+                  'h-1.5 w-1.5 rounded-full',
+                  s.state === 'running' ? 'bg-running' : '',
+                  s.state === 'waiting-for-input' ? 'bg-warn motion-safe:animate-pulse' : '',
+                  s.state === 'finished' ? 'bg-accent' : '',
+                  s.state === 'error' ? 'bg-error' : '',
+                  s.state === 'idle' ? 'bg-muted' : '',
+                ].join(' ')}
               />
-            )}
+              {isRenaming ? (
+                <input
+                  autoFocus
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onBlur={() => void commitRename(id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void commitRename(id)
+                    if (e.key === 'Escape') setRenaming(null)
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-32 bg-bg px-1 py-0 font-mono text-xs outline-none ring-1 ring-accent"
+                  aria-label="Rename session"
+                />
+              ) : (
+                <span className="font-mono">{s.label}</span>
+              )}
+              {showBadge && (
+                <span
+                  aria-live="polite"
+                  className="h-1.5 w-1.5 rounded-full bg-warn motion-safe:animate-pulse"
+                  title="Waiting for input"
+                />
+              )}
+            </button>
             <button
               type="button"
               onClick={(e) => {
@@ -83,7 +151,7 @@ export function SessionTabs(): ReactElement {
             >
               ×
             </button>
-          </button>
+          </div>
         )
       })}
 
@@ -93,7 +161,7 @@ export function SessionTabs(): ReactElement {
           onClick={() => void spawn('shell')}
           disabled={!activeWorkspaceId}
           className="rounded-sm border border-border bg-bg-elevated px-2 py-1 hover:border-border-strong disabled:cursor-not-allowed disabled:opacity-50"
-          title="New shell (Ctrl+Shift+T spawns last-used)"
+          title="New shell (Ctrl+T spawns last-used)"
         >
           + shell
         </button>

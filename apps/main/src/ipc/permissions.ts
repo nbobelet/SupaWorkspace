@@ -1,5 +1,6 @@
 import { resolve } from 'node:path'
-import { dialog, ipcMain, BrowserWindow } from 'electron'
+import type { BrowserWindow } from 'electron';
+import { dialog, ipcMain } from 'electron'
 import {
   IpcChannel,
   PermissionsRequestPathRequest,

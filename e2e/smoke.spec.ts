@@ -1,10 +1,13 @@
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import { _electron as electron, expect, test } from '@playwright/test'
 import type { ElectronApplication, Page } from '@playwright/test'
 
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
 const ROOT = resolve(__dirname, '..')
 const MAIN_ENTRY = join(ROOT, 'out', 'main', 'index.js')
 
@@ -57,7 +60,7 @@ test.afterAll(async () => {
 test('smoke: workspace listed, spawn shell, echo ok appears', async () => {
   await expect(page.getByText('ClaudeWorkspace').first()).toBeVisible({ timeout: 10_000 })
 
-  await expect(page.getByText('e2e-workspace')).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByText('e2e-workspace').first()).toBeVisible({ timeout: 10_000 })
 
   await page.getByRole('button', { name: '+ shell' }).first().click()
 
@@ -68,5 +71,34 @@ test('smoke: workspace listed, spawn shell, echo ok appears', async () => {
   await page.keyboard.type('echo claude-workspace-ok')
   await page.keyboard.press('Enter')
 
-  await expect(page.locator('.xterm-rows')).toContainText('claude-workspace-ok', { timeout: 15_000 })
+  await expect
+    .poll(
+      async () => {
+        return page.evaluate(() => {
+          const win = window as unknown as { __readTerminal?: (id: string) => string | null }
+          const el = document.querySelector('[data-session-id]') as HTMLElement | null
+          const id = el?.dataset['sessionId']
+          return id ? (win.__readTerminal?.(id) ?? '') : ''
+        })
+      },
+      { timeout: 15_000 },
+    )
+    .toContain('claude-workspace-ok')
+})
+
+test('Ctrl+T spawns a new tab in the active workspace only', async () => {
+  // Move focus out of the terminal so the global shortcut fires.
+  await page.locator('header').first().click()
+
+  const sessionsBefore = await page.evaluate(() => document.querySelectorAll('[data-session-id]').length)
+
+  await page.keyboard.press('Control+t')
+
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(() => document.querySelectorAll('[data-session-id]').length),
+      { timeout: 10_000 },
+    )
+    .toBe(sessionsBefore + 1)
 })

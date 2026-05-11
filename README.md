@@ -4,6 +4,14 @@ Multi-session terminal workspace manager for the `claude` CLI and shell sessions
 
 A workspace is a folder on disk. Sessions spawned inside a workspace inherit its scope (cwd + permissions). Switch between single / grid / split layouts without losing live terminal state.
 
+## Features
+
+- **Per-workspace tab scoping** — terminal tabs are filtered by the active workspace; no cross-workspace bleed.
+- **Inline tab rename** — double-click a tab label to rename, persisted main-side. Same UX for workspace tiles.
+- **Notification center** — bell badge on each workspace tile, click for a popover of recent notifications; `sonner` toasts top-right for live transitions (waiting / finished / error).
+- **Keyboard shortcuts** — `Ctrl+K` palette, `Ctrl+Tab`/`Ctrl+1-9` session navigation, `Ctrl+T` new, `Ctrl+W` close, `Ctrl+Shift+[/]` workspaces. Full list in [docs/keyboard-shortcuts.md](docs/keyboard-shortcuts.md).
+- **Command palette** — `Ctrl+K` (`Cmd+K` on macOS) opens fuzzy search across workspaces, sessions, and quick actions.
+
 ## Requirements
 
 - Node 20+ (tested on 22)
@@ -31,6 +39,23 @@ pnpm format         # Prettier write
 pnpm test           # Vitest unit tests
 pnpm test:e2e       # Playwright smoke test
 ```
+
+## Keyboard shortcuts
+
+`$mod` = **Cmd** on macOS, **Ctrl** on Windows / Linux. Shortcuts no-op when focus is inside an input or a terminal pane.
+
+| Key                     | Action                              |
+| ----------------------- | ----------------------------------- |
+| `$mod + K`              | Command palette                     |
+| `$mod + T`              | New session (last-used type)        |
+| `$mod + W`              | Close active session                |
+| `$mod + Tab` / `Shift+Tab` | Cycle session within workspace   |
+| `$mod + 1` … `$mod + 9` | Jump to session N (current workspace) |
+| `$mod + Shift + ]` / `[` | Next / previous workspace          |
+| `$mod + R`              | Rename active tab                   |
+| `F2`                    | Rename active workspace             |
+
+Full reference: [docs/keyboard-shortcuts.md](docs/keyboard-shortcuts.md).
 
 ## Build
 

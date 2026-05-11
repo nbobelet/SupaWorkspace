@@ -5,3 +5,5 @@ allowBuilds:
   '@homebridge/node-pty-prebuilt-multiarch': true
   electron: true
   esbuild: true
+patchedDependencies:
+  '@homebridge/node-pty-prebuilt-multiarch@0.12.0': patches/@homebridge__node-pty-prebuilt-multiarch@0.12.0.patch

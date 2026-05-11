@@ -5,6 +5,7 @@ import { TerminalPane } from './TerminalPane'
 import { useSessionStore } from '../state/sessionStore'
 import { useLayoutStore } from '../state/layoutStore'
 import { CascadeLayout } from './CascadeLayout'
+import { WelcomePane } from './WelcomePane'
 
 function buildSingleNode(sessionIds: readonly string[], activeId: string | null): MosaicNode<string> | null {
   if (sessionIds.length === 0) return null
@@ -75,14 +76,7 @@ export function PaneMosaic(): ReactElement {
   }, [computedNode])
 
   if (order.length === 0) {
-    return (
-      <div className="grid h-full place-items-center text-muted">
-        <div className="flex flex-col items-center gap-2 text-xs">
-          <p>No sessions yet.</p>
-          <p>Open a workspace, then spawn a shell or claude.</p>
-        </div>
-      </div>
-    )
+    return <WelcomePane />
   }
 
   if (mode === 'cascade') {

@@ -60,10 +60,13 @@
     "@xterm/addon-web-links": "^0.11.0",
     "@xterm/addon-webgl": "^0.18.0",
     "@xterm/xterm": "^5.5.0",
+    "cmdk": "^1.1.1",
     "electron-store": "^10.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-mosaic-component": "^6.1.1",
+    "sonner": "^2.0.7",
+    "tinykeys": "^3.0.0",
     "uuid": "^11.0.5",
     "zod": "^3.24.1",
     "zustand": "^5.0.2"
