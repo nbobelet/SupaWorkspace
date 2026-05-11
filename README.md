@@ -68,6 +68,29 @@ pnpm dev
 
 On Electron + ConPTY, `node-pty` spawns an auxiliary `conpty_console_list_agent.js` child process to enumerate console-attached PIDs for cleanup. In an Electron main process detached from a console, this agent's `AttachConsole` call fails and the child crashes. **This is cosmetic** — the actual PTY operations are unaffected. We do not log nor surface this to the user.
 
+## Permissions model
+
+A workspace's `rootPath` is the scope boundary. The renderer can request
+out-of-scope access via:
+
+```ts
+const res = await window.ws.permissions.requestPath({
+  workspaceId,
+  path: '/some/absolute/path',
+  kind: 'read' | 'write',
+})
+```
+
+Resolution:
+
+- If `path` resolves inside `workspace.rootPath` → auto-allow, no dialog.
+- If a matching grant already exists in `workspace.permissions.extraPaths` → auto-allow.
+- Otherwise → native `dialog.showMessageBox` shows the literal path with three buttons (Deny / Allow once / Always allow). "Always allow" persists a `PathGrant` on the workspace.
+
+Grants are revocable from Settings → Permissions. Persistence lives in `electron-store` alongside the workspace itself, so grants survive app restarts.
+
+The `claude` CLI's own per-tool permissions (`Bash(pnpm:*)`, `Read(./**)`, etc.) live in `<rootPath>/.claude/settings.json` and are edited through Settings → Permissions. Those are enforced by the `claude` CLI itself at tool-call time — the host app only writes the file.
+
 ## Code signing
 
 Not configured. TODO before public distribution:
