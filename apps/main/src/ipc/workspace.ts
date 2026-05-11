@@ -43,8 +43,8 @@ export function registerWorkspaceIpc(opts: {
     if (result.canceled || result.filePaths.length === 0) return { workspace: null }
     const root = result.filePaths[0]
     if (!root) return { workspace: null }
-    const workspace = workspaceStore.openOrCreate(root)
-    return { workspace }
+    const { workspace, wasExisting } = workspaceStore.openOrCreate(root)
+    return { workspace, wasExisting }
   })
 
   ipcMain.handle(IpcChannel.WorkspaceRename, async (_, raw): Promise<Workspace> => {

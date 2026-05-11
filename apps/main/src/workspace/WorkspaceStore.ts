@@ -3,6 +3,7 @@ import { basename } from 'node:path'
 import { existsSync } from 'node:fs'
 import Store from 'electron-store'
 import type { PathGrant, Workspace, WorkspacePermissions } from '@shared/workspace'
+import { pickWorkspaceHue } from './pickWorkspaceHue'
 
 interface StoreShape {
   workspaces: Workspace[]
@@ -33,7 +34,7 @@ export class WorkspaceStore {
     return this.store.get('workspaces', []).find((w) => w.rootPath === rootPath)
   }
 
-  openOrCreate(rootPath: string): Workspace {
+  openOrCreate(rootPath: string): { workspace: Workspace; wasExisting: boolean } {
     if (!existsSync(rootPath)) {
       throw new Error(`Workspace path does not exist: ${rootPath}`)
     }
@@ -42,8 +43,12 @@ export class WorkspaceStore {
     if (existing) {
       const updated = { ...existing, lastOpenedAt: now }
       this.replace(updated)
-      return updated
+      return { workspace: updated, wasExisting: true }
     }
+    const existingHues = this.store
+      .get('workspaces', [])
+      .map((w) => w.color?.hue)
+      .filter((h): h is number => typeof h === 'number')
     const workspace: Workspace = {
       id: randomUUID(),
       name: basename(rootPath),
@@ -51,15 +56,24 @@ export class WorkspaceStore {
       createdAt: now,
       lastOpenedAt: now,
       permissions: defaultPermissions(),
+      color: { hue: pickWorkspaceHue(existingHues) },
     }
     this.store.set('workspaces', [...this.store.get('workspaces', []), workspace])
-    return workspace
+    return { workspace, wasExisting: false }
   }
 
   rename(id: string, name: string): Workspace {
     const ws = this.getById(id)
     if (!ws) throw new Error(`Workspace not found: ${id}`)
     const updated = { ...ws, name }
+    this.replace(updated)
+    return updated
+  }
+
+  setColor(id: string, hue: number): Workspace {
+    const ws = this.getById(id)
+    if (!ws) throw new Error(`Workspace not found: ${id}`)
+    const updated: Workspace = { ...ws, color: { hue } }
     this.replace(updated)
     return updated
   }

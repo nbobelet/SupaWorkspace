@@ -97,6 +97,7 @@ export type SessionStateEvent = z.infer<typeof SessionStateEvent>
 
 export const WorkspaceOpenResponse = z.object({
   workspace: Workspace.nullable(),
+  wasExisting: z.boolean().optional(),
 })
 export type WorkspaceOpenResponse = z.infer<typeof WorkspaceOpenResponse>
 
