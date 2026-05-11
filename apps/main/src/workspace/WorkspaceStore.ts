@@ -1,0 +1,99 @@
+import { randomUUID } from 'node:crypto'
+import { basename } from 'node:path'
+import { existsSync } from 'node:fs'
+import Store from 'electron-store'
+import type { PathGrant, Workspace, WorkspacePermissions } from '@shared/workspace'
+
+interface StoreShape {
+  workspaces: Workspace[]
+}
+
+const defaultPermissions = (): WorkspacePermissions => ({ extraPaths: [], allow: [], deny: [] })
+
+export class WorkspaceStore {
+  private readonly store: Store<StoreShape>
+
+  constructor() {
+    this.store = new Store<StoreShape>({
+      name: 'workspaces',
+      defaults: { workspaces: [] },
+      clearInvalidConfig: true,
+    })
+  }
+
+  list(): Workspace[] {
+    return [...this.store.get('workspaces', [])].sort((a, b) => b.lastOpenedAt - a.lastOpenedAt)
+  }
+
+  getById(id: string): Workspace | undefined {
+    return this.store.get('workspaces', []).find((w) => w.id === id)
+  }
+
+  getByPath(rootPath: string): Workspace | undefined {
+    return this.store.get('workspaces', []).find((w) => w.rootPath === rootPath)
+  }
+
+  openOrCreate(rootPath: string): Workspace {
+    if (!existsSync(rootPath)) {
+      throw new Error(`Workspace path does not exist: ${rootPath}`)
+    }
+    const existing = this.getByPath(rootPath)
+    const now = Date.now()
+    if (existing) {
+      const updated = { ...existing, lastOpenedAt: now }
+      this.replace(updated)
+      return updated
+    }
+    const workspace: Workspace = {
+      id: randomUUID(),
+      name: basename(rootPath),
+      rootPath,
+      createdAt: now,
+      lastOpenedAt: now,
+      permissions: defaultPermissions(),
+    }
+    this.store.set('workspaces', [...this.store.get('workspaces', []), workspace])
+    return workspace
+  }
+
+  rename(id: string, name: string): Workspace {
+    const ws = this.getById(id)
+    if (!ws) throw new Error(`Workspace not found: ${id}`)
+    const updated = { ...ws, name }
+    this.replace(updated)
+    return updated
+  }
+
+  remove(id: string): void {
+    const next = this.store.get('workspaces', []).filter((w) => w.id !== id)
+    this.store.set('workspaces', next)
+  }
+
+  addPathGrant(id: string, grant: PathGrant): Workspace {
+    const ws = this.getById(id)
+    if (!ws) throw new Error(`Workspace not found: ${id}`)
+    const existing = ws.permissions.extraPaths.find((p) => p.path === grant.path)
+    const extraPaths = existing
+      ? ws.permissions.extraPaths.map((p) => (p.path === grant.path ? grant : p))
+      : [...ws.permissions.extraPaths, grant]
+    const updated: Workspace = { ...ws, permissions: { ...ws.permissions, extraPaths } }
+    this.replace(updated)
+    return updated
+  }
+
+  revokePathGrant(id: string, path: string): Workspace {
+    const ws = this.getById(id)
+    if (!ws) throw new Error(`Workspace not found: ${id}`)
+    const extraPaths = ws.permissions.extraPaths.filter((p) => p.path !== path)
+    const updated: Workspace = { ...ws, permissions: { ...ws.permissions, extraPaths } }
+    this.replace(updated)
+    return updated
+  }
+
+  private replace(ws: Workspace): void {
+    const next = this.store
+      .get('workspaces', [])
+      .map((existing) => (existing.id === ws.id ? ws : existing))
+    this.store.set('workspaces', next)
+  }
+}

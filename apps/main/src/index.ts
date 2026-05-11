@@ -2,10 +2,25 @@ import { app, BrowserWindow, shell } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { runPtySmoke } from './pty/smoke'
+import { SessionManager } from './pty/SessionManager'
+import { WorkspaceStore } from './workspace/WorkspaceStore'
+import { registerSessionIpc } from './ipc/session'
+import { registerWorkspaceIpc } from './ipc/workspace'
+import { registerPermissionsIpc } from './ipc/permissions'
+import { IpcChannel } from '@shared/ipc'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 let mainWindow: BrowserWindow | null = null
+
+function getMainWindow(): BrowserWindow | null {
+  return mainWindow
+}
+
+function broadcast(channel: string, payload: unknown): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  mainWindow.webContents.send(channel, payload)
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -42,6 +57,10 @@ function createWindow(): void {
     }
   })
 
+  mainWindow.on('closed', () => {
+    mainWindow = null
+  })
+
   if (process.env['ELECTRON_RENDERER_URL']) {
     void mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
@@ -55,12 +74,28 @@ void app.whenReady().then(async () => {
     console.error('[pty] smoke FAILED — node-pty cannot spawn. App will continue but PTY features are broken.')
   }
 
+  const workspaceStore = new WorkspaceStore()
+  const sessionManager = new SessionManager({
+    onData: (sessionId, data) => broadcast(IpcChannel.SessionData, { sessionId, data }),
+    onExit: (sessionId, exitCode, signal) =>
+      broadcast(IpcChannel.SessionExit, { sessionId, exitCode, signal }),
+    onState: (sessionId, state) => broadcast(IpcChannel.SessionState, { sessionId, state }),
+  })
+
+  registerSessionIpc({ sessionManager, workspaceStore })
+  registerWorkspaceIpc({ workspaceStore, getMainWindow })
+  registerPermissionsIpc({ workspaceStore, getMainWindow })
+
   createWindow()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow()
     }
+  })
+
+  app.on('before-quit', () => {
+    sessionManager.killAll()
   })
 })
 
@@ -69,7 +104,3 @@ app.on('window-all-closed', () => {
     app.quit()
   }
 })
-
-export function getMainWindow(): BrowserWindow | null {
-  return mainWindow
-}
