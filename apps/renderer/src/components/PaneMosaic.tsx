@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState, type ReactElement } from 'react'
 import { Mosaic, MosaicWindow, type MosaicNode } from 'react-mosaic-component'
 import 'react-mosaic-component/react-mosaic-component.css'
 import { TerminalPane } from './TerminalPane'
-import { useSessionStore } from '../state/sessionStore'
+import { useScopedOrder, useSessionStore } from '../state/sessionStore'
+import { useWorkspaceStore } from '../state/workspaceStore'
 import { useLayoutStore } from '../state/layoutStore'
 import { CascadeLayout } from './CascadeLayout'
 import { WelcomePane } from './WelcomePane'
+import { EmptyWorkspaceState } from './EmptyWorkspaceState'
 
 function buildSingleNode(sessionIds: readonly string[], activeId: string | null): MosaicNode<string> | null {
   if (sessionIds.length === 0) return null
@@ -54,6 +56,8 @@ export function PaneMosaic(): ReactElement {
   const activeId = useSessionStore((s) => s.activeId)
   const setActive = useSessionStore((s) => s.setActive)
   const mode = useLayoutStore((s) => s.mode)
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
+  const scopedOrder = useScopedOrder()
 
   const computedNode = useMemo(() => {
     switch (mode) {
@@ -77,6 +81,10 @@ export function PaneMosaic(): ReactElement {
 
   if (order.length === 0) {
     return <WelcomePane />
+  }
+
+  if (activeWorkspaceId && scopedOrder.length === 0) {
+    return <EmptyWorkspaceState />
   }
 
   if (mode === 'cascade') {
