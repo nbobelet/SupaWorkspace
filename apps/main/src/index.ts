@@ -95,7 +95,7 @@ void app.whenReady().then(async () => {
     onSpawn: (cfg) => notifier.registerSession(cfg),
     onRename: (cfg) => notifier.updateSession(cfg),
   })
-  registerWorkspaceIpc({ workspaceStore, getMainWindow })
+  registerWorkspaceIpc({ workspaceStore, sessionManager, getMainWindow })
   registerPermissionsIpc({ workspaceStore, getMainWindow, notifier })
 
   createWindow()

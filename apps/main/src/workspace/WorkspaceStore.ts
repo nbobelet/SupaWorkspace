@@ -83,6 +83,30 @@ export class WorkspaceStore {
     this.store.set('workspaces', next)
   }
 
+  findGrantConflicts(): Array<{
+    path: string
+    workspaces: Array<{ id: string; name: string; kind: 'read' | 'write' }>
+  }> {
+    const byPath = new Map<string, Array<{ id: string; name: string; kind: 'read' | 'write' }>>()
+    for (const ws of this.store.get('workspaces', [])) {
+      for (const grant of ws.permissions.extraPaths) {
+        const list = byPath.get(grant.path) ?? []
+        list.push({ id: ws.id, name: ws.name, kind: grant.kind })
+        byPath.set(grant.path, list)
+      }
+    }
+    const conflicts: Array<{
+      path: string
+      workspaces: Array<{ id: string; name: string; kind: 'read' | 'write' }>
+    }> = []
+    for (const [path, workspaces] of byPath) {
+      if (workspaces.length > 1) {
+        conflicts.push({ path, workspaces })
+      }
+    }
+    return conflicts
+  }
+
   addPathGrant(id: string, grant: PathGrant): Workspace {
     const ws = this.getById(id)
     if (!ws) throw new Error(`Workspace not found: ${id}`)

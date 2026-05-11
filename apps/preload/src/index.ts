@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   IpcChannelName,
+  NotesGetResponse,
+  PermissionsGrantConflictsResponse,
   PermissionsRequestPathRequest,
   PermissionsRequestPathResponse,
   PermissionsRevokePathRequest,
@@ -69,16 +71,25 @@ const api = {
       ipcRenderer.invoke(IpcChannel.WorkspaceReadSettings, { workspaceId }),
     writeSettings: (workspaceId: string, settings: ClaudeSettings): Promise<void> =>
       ipcRenderer.invoke(IpcChannel.WorkspaceWriteSettings, { workspaceId, settings }),
+    setColor: (workspaceId: string, hue: number): Promise<Workspace> =>
+      ipcRenderer.invoke(IpcChannel.WorkspaceSetColor, { workspaceId, hue }),
   },
   permissions: {
     requestPath: (req: PermissionsRequestPathRequest): Promise<PermissionsRequestPathResponse> =>
       ipcRenderer.invoke(IpcChannel.PermissionsRequestPath, req),
     revokePath: (req: PermissionsRevokePathRequest): Promise<Workspace> =>
       ipcRenderer.invoke(IpcChannel.PermissionsRevokePath, req),
+    grantConflicts: (): Promise<PermissionsGrantConflictsResponse> =>
+      ipcRenderer.invoke(IpcChannel.PermissionsGrantConflicts),
   },
   notifications: {
     onPush: (listener: (event: NotificationPushEvent) => void): Unsubscribe =>
       on<NotificationPushEvent>(IpcChannel.NotifPush, listener),
+  },
+  notes: {
+    get: (): Promise<NotesGetResponse> => ipcRenderer.invoke(IpcChannel.NotesGet),
+    set: (content: string): Promise<void> =>
+      ipcRenderer.invoke(IpcChannel.NotesSet, { content }),
   },
 }
 

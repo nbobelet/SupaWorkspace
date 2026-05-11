@@ -110,6 +110,23 @@ export class SessionManager {
     }
   }
 
+  killAllInWorkspace(workspaceId: string): number {
+    let killed = 0
+    for (const [id, session] of this.sessions) {
+      if (session.config.workspaceId === workspaceId) {
+        this.kill(id)
+        killed += 1
+      }
+    }
+    return killed
+  }
+
+  listByWorkspace(workspaceId: string): SessionConfig[] {
+    return [...this.sessions.values()]
+      .filter((s) => s.config.workspaceId === workspaceId)
+      .map((s) => s.config)
+  }
+
   list(): SessionConfig[] {
     return [...this.sessions.values()].map((s) => s.config)
   }

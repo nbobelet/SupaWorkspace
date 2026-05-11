@@ -16,10 +16,13 @@ import {
   WorkspaceRemoveRequest,
   WorkspaceRenameRequest,
   WorkspaceRevealRequest,
+  WorkspaceSetColorRequest,
   WorkspaceWriteClaudeMdRequest,
   WorkspaceWriteSettingsRequest,
+  type PermissionsGrantConflictsResponse,
 } from '@shared/ipc'
 import type { Workspace } from '@shared/workspace'
+import type { SessionManager } from '../pty/SessionManager'
 import type { WorkspaceStore } from '../workspace/WorkspaceStore'
 
 const CLAUDE_MD = 'CLAUDE.md'
@@ -27,9 +30,10 @@ const CLAUDE_SETTINGS = '.claude/settings.json'
 
 export function registerWorkspaceIpc(opts: {
   workspaceStore: WorkspaceStore
+  sessionManager: SessionManager
   getMainWindow: () => BrowserWindow | null
 }): () => void {
-  const { workspaceStore, getMainWindow } = opts
+  const { workspaceStore, sessionManager, getMainWindow } = opts
 
   ipcMain.handle(IpcChannel.WorkspaceList, async (): Promise<WorkspaceListResponse> => {
     return { workspaces: workspaceStore.list() }
@@ -54,8 +58,21 @@ export function registerWorkspaceIpc(opts: {
 
   ipcMain.handle(IpcChannel.WorkspaceRemove, async (_, raw): Promise<void> => {
     const req = WorkspaceRemoveRequest.parse(raw)
+    sessionManager.killAllInWorkspace(req.workspaceId)
     workspaceStore.remove(req.workspaceId)
   })
+
+  ipcMain.handle(IpcChannel.WorkspaceSetColor, async (_, raw): Promise<Workspace> => {
+    const req = WorkspaceSetColorRequest.parse(raw)
+    return workspaceStore.setColor(req.workspaceId, req.hue)
+  })
+
+  ipcMain.handle(
+    IpcChannel.PermissionsGrantConflicts,
+    async (): Promise<PermissionsGrantConflictsResponse> => {
+      return { conflicts: workspaceStore.findGrantConflicts() }
+    },
+  )
 
   ipcMain.handle(IpcChannel.WorkspaceReveal, async (_, raw): Promise<void> => {
     const req = WorkspaceRevealRequest.parse(raw)
@@ -117,5 +134,7 @@ export function registerWorkspaceIpc(opts: {
     ipcMain.removeHandler(IpcChannel.WorkspaceWriteClaudeMd)
     ipcMain.removeHandler(IpcChannel.WorkspaceReadSettings)
     ipcMain.removeHandler(IpcChannel.WorkspaceWriteSettings)
+    ipcMain.removeHandler(IpcChannel.WorkspaceSetColor)
+    ipcMain.removeHandler(IpcChannel.PermissionsGrantConflicts)
   }
 }
