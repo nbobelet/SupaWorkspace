@@ -1,0 +1,7 @@
+packages:
+  - apps/*
+  - packages/*
+allowBuilds:
+  '@homebridge/node-pty-prebuilt-multiarch': true
+  electron: true
+  esbuild: true
