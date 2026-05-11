@@ -40,6 +40,10 @@ pnpm package        # build + electron-builder (nsis / dmg / AppImage)
 pnpm package:dir    # unpacked build for local testing
 ```
 
+### Windows packaging caveat
+
+`electron-builder` extracts its `winCodeSign` toolchain on first run; the archive contains darwin `.dylib` symlinks that Windows refuses to create without Developer Mode or an Administrator shell. Enable Windows Developer Mode (Settings → Privacy & Security → For developers → Developer Mode → On) before running `pnpm package` for the first time. CI runners and macOS/Linux are unaffected.
+
 ## Architecture
 
 ```
