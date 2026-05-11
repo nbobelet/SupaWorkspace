@@ -16,7 +16,7 @@ function makeNotif(overrides: Partial<RendererNotification> = {}): Omit<Renderer
     sessionId: overrides.sessionId ?? '550e8400-e29b-41d4-a716-000000000010',
     sessionLabel: overrides.sessionLabel ?? 'pwsh',
     workspaceName: overrides.workspaceName ?? 'ws-1',
-    kind: overrides.kind ?? 'waiting',
+    kind: overrides.kind ?? 'user-input-required',
     ts: overrides.ts ?? 1_700_000_000_000,
   }
 }

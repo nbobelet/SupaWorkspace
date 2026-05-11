@@ -40,13 +40,13 @@ export class Notifier {
     if (!session) return
 
     if (state === 'waiting-for-input') {
-      this.emit(session, 'waiting')
+      this.emit(session, 'user-input-required')
       this.maybeNotify(session, 'Claude needs input', 'waiting for permission or prompt')
       return
     }
 
     if (state === 'finished' && session.type === 'claude' && previous === 'running') {
-      this.emit(session, 'finished')
+      this.emit(session, 'request-complete')
       this.maybeNotify(session, 'Claude finished', 'session is idle')
       return
     }
@@ -55,6 +55,36 @@ export class Notifier {
       this.emit(session, 'error')
       this.maybeNotify(session, 'Session errored', `${session.label} exited with error`)
     }
+  }
+
+  emitPermissionPrompt(workspaceId: string, path: string, kind: 'read' | 'write'): void {
+    const win = this.getMainWindow()
+    if (!win || win.isDestroyed()) return
+    const workspace = this.workspaceStore.getById(workspaceId)
+    const payload: NotificationPushEvent = {
+      id: randomUUID(),
+      workspaceId,
+      workspaceName: workspace?.name ?? 'workspace',
+      kind: 'permission-prompt',
+      ts: Date.now(),
+      detail: `${kind} access requested: ${path}`,
+    }
+    win.webContents.send(IpcChannel.NotifPush, payload)
+
+    if (win.isFocused() && !win.isMinimized()) return
+    if (!Notification.isSupported()) return
+    const notification = new Notification({
+      title: 'Permission requested',
+      body: `${workspace?.name ?? 'workspace'} · ${kind} access to ${path}`,
+      silent: false,
+    })
+    notification.on('click', () => {
+      const w = this.getMainWindow()
+      if (!w) return
+      if (w.isMinimized()) w.restore()
+      w.focus()
+    })
+    notification.show()
   }
 
   private emit(session: SessionConfig, kind: NotificationKind): void {

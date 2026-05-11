@@ -14,6 +14,11 @@ export const WorkspacePermissions = z.object({
 })
 export type WorkspacePermissions = z.infer<typeof WorkspacePermissions>
 
+export const WorkspaceColor = z.object({
+  hue: z.number().min(0).max(360),
+})
+export type WorkspaceColor = z.infer<typeof WorkspaceColor>
+
 export const Workspace = z.object({
   id: z.string().uuid(),
   name: z.string(),
@@ -21,5 +26,6 @@ export const Workspace = z.object({
   createdAt: z.number().int(),
   lastOpenedAt: z.number().int(),
   permissions: WorkspacePermissions,
+  color: WorkspaceColor.optional(),
 })
 export type Workspace = z.infer<typeof Workspace>

@@ -49,14 +49,19 @@ export function App(): ReactElement {
     const unsubscribe = window.ws.notifications.onPush((event) => {
       pushNotif(event)
       const title =
-        event.kind === 'waiting'
+        event.kind === 'user-input-required'
           ? 'Claude needs input'
-          : event.kind === 'finished'
+          : event.kind === 'request-complete'
             ? 'Claude finished'
-            : 'Session errored'
-      const description = `${event.workspaceName} · ${event.sessionLabel}`
+            : event.kind === 'permission-prompt'
+              ? 'Permission requested'
+              : 'Session errored'
+      const description = event.sessionLabel
+        ? `${event.workspaceName} · ${event.sessionLabel}`
+        : event.workspaceName
       if (event.kind === 'error') toast.error(title, { description })
-      else if (event.kind === 'waiting') toast.warning(title, { description })
+      else if (event.kind === 'user-input-required' || event.kind === 'permission-prompt')
+        toast.warning(title, { description })
       else toast.success(title, { description })
     })
     return unsubscribe

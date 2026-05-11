@@ -4,12 +4,13 @@ import type { NotificationKind } from '@shared/notification'
 export interface RendererNotification {
   id: string
   workspaceId: string
-  sessionId: string
-  sessionLabel: string
+  sessionId?: string
+  sessionLabel?: string
   workspaceName: string
   kind: NotificationKind
   ts: number
   read: boolean
+  detail?: string
 }
 
 interface NotificationStoreState {
@@ -19,6 +20,7 @@ interface NotificationStoreState {
   markRead: (id: string) => void
   markAllReadForWorkspace: (workspaceId: string) => void
   clear: (id: string) => void
+  clearForWorkspace: (workspaceId: string) => void
   clearAll: () => void
 }
 
@@ -48,6 +50,11 @@ export const useNotificationStore = create<NotificationStoreState>((set) => ({
   clear: (id) =>
     set((prev) => ({
       notifications: prev.notifications.filter((n) => n.id !== id),
+    })),
+
+  clearForWorkspace: (workspaceId) =>
+    set((prev) => ({
+      notifications: prev.notifications.filter((n) => n.workspaceId !== workspaceId),
     })),
 
   clearAll: () => set({ notifications: [] }),

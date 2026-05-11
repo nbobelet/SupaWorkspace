@@ -21,9 +21,13 @@ export const IpcChannel = {
   WorkspaceWriteClaudeMd: 'workspace:write-claude-md',
   WorkspaceReadSettings: 'workspace:read-settings',
   WorkspaceWriteSettings: 'workspace:write-settings',
+  WorkspaceSetColor: 'workspace:set-color',
   PermissionsRequestPath: 'permissions:request-path',
   PermissionsRevokePath: 'permissions:revoke-path',
+  PermissionsGrantConflicts: 'permissions:grant-conflicts',
   NotifPush: 'notif:push',
+  NotesGet: 'notes:get',
+  NotesSet: 'notes:set',
 } as const
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel]
 
@@ -183,3 +187,36 @@ export const PermissionsRevokePathRequest = z.object({
   path: z.string(),
 })
 export type PermissionsRevokePathRequest = z.infer<typeof PermissionsRevokePathRequest>
+
+export const WorkspaceSetColorRequest = z.object({
+  workspaceId: z.string().uuid(),
+  hue: z.number().min(0).max(360),
+})
+export type WorkspaceSetColorRequest = z.infer<typeof WorkspaceSetColorRequest>
+
+export const PathGrantConflict = z.object({
+  path: z.string(),
+  workspaces: z.array(
+    z.object({
+      id: z.string().uuid(),
+      name: z.string(),
+      kind: z.enum(['read', 'write']),
+    }),
+  ),
+})
+export type PathGrantConflict = z.infer<typeof PathGrantConflict>
+
+export const PermissionsGrantConflictsResponse = z.object({
+  conflicts: z.array(PathGrantConflict),
+})
+export type PermissionsGrantConflictsResponse = z.infer<typeof PermissionsGrantConflictsResponse>
+
+export const NotesGetResponse = z.object({
+  content: z.string(),
+})
+export type NotesGetResponse = z.infer<typeof NotesGetResponse>
+
+export const NotesSetRequest = z.object({
+  content: z.string().max(1_000_000),
+})
+export type NotesSetRequest = z.infer<typeof NotesSetRequest>

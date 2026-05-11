@@ -112,7 +112,7 @@ export function WorkspaceSidebar({ onSettingsToggle, settingsOpen }: WorkspaceSi
     (notif: RendererNotification) => {
       markRead(notif.id)
       setActiveWorkspace(notif.workspaceId)
-      setActiveSession(notif.sessionId)
+      if (notif.sessionId) setActiveSession(notif.sessionId)
       setBellOpen(null)
     },
     [markRead, setActiveWorkspace, setActiveSession],
@@ -325,8 +325,9 @@ function WorkspaceTile({
                   <span
                     className={[
                       'mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full',
-                      n.kind === 'waiting' ? 'bg-warn' : '',
-                      n.kind === 'finished' ? 'bg-accent' : '',
+                      n.kind === 'user-input-required' ? 'bg-warn' : '',
+                      n.kind === 'permission-prompt' ? 'bg-warn' : '',
+                      n.kind === 'request-complete' ? 'bg-accent' : '',
                       n.kind === 'error' ? 'bg-error' : '',
                     ].join(' ')}
                     aria-hidden="true"
@@ -347,9 +348,11 @@ function WorkspaceTile({
 
 function notifLabel(kind: RendererNotification['kind']): string {
   switch (kind) {
-    case 'waiting':
+    case 'user-input-required':
       return 'waiting for input'
-    case 'finished':
+    case 'permission-prompt':
+      return 'permission requested'
+    case 'request-complete':
       return 'finished'
     case 'error':
       return 'errored'
