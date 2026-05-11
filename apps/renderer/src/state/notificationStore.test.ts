@@ -61,6 +61,18 @@ describe('notificationStore', () => {
     expect(useNotificationStore.getState().notifications).toHaveLength(1)
   })
 
+  it('clearForWorkspace removes all notifications for that workspace and keeps others', () => {
+    useNotificationStore.getState().push(makeNotif({ id: 'a-1', workspaceId: ws1 }))
+    useNotificationStore.getState().push(makeNotif({ id: 'a-2', workspaceId: ws1 }))
+    useNotificationStore.getState().push(makeNotif({ id: 'a-3', workspaceId: ws1 }))
+    useNotificationStore.getState().push(makeNotif({ id: 'b-1', workspaceId: ws2 }))
+    useNotificationStore.getState().push(makeNotif({ id: 'b-2', workspaceId: ws2 }))
+    useNotificationStore.getState().clearForWorkspace(ws1)
+    const state = useNotificationStore.getState().notifications
+    expect(state).toHaveLength(2)
+    expect(state.every((n) => n.workspaceId === ws2)).toBe(true)
+  })
+
   it('unreadCountByWorkspace counts only unread for that workspace', () => {
     useNotificationStore.getState().push(makeNotif({ id: 'a', workspaceId: ws1 }))
     useNotificationStore.getState().push(makeNotif({ id: 'b', workspaceId: ws1 }))

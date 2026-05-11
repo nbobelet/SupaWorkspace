@@ -33,6 +33,7 @@ export function WorkspaceSidebar({ onSettingsToggle, settingsOpen }: WorkspaceSi
   const notifications = useNotificationStore((s) => s.notifications)
   const markRead = useNotificationStore((s) => s.markRead)
   const markAllReadForWorkspace = useNotificationStore((s) => s.markAllReadForWorkspace)
+  const clearForWorkspace = useNotificationStore((s) => s.clearForWorkspace)
   const setActiveSession = useSessionStore((s) => s.setActive)
 
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
@@ -145,7 +146,10 @@ export function WorkspaceSidebar({ onSettingsToggle, settingsOpen }: WorkspaceSi
             onRenameChange={rename.setRenameValue}
             onRenameCommit={rename.commitRename}
             onRenameCancel={rename.cancelRename}
-            onActivate={() => setActiveWorkspace(w.id)}
+            onActivate={() => {
+              setActiveWorkspace(w.id)
+              clearForWorkspace(w.id)
+            }}
             onContextMenu={handleContextMenu}
             notifications={notifications}
             bellOpen={bellOpen === w.id}
