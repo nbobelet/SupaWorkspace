@@ -1,147 +1,110 @@
 import { useCallback, useEffect, useState, type ReactElement } from 'react'
-import { TerminalPane } from './components/TerminalPane'
+import { PaneMosaic } from './components/PaneMosaic'
+import { WorkspaceSidebar } from './components/WorkspaceSidebar'
+import { SessionTabs } from './components/SessionTabs'
+import { LayoutSwitcher } from './components/LayoutSwitcher'
+import { SettingsPanel } from './components/settings/SettingsPanel'
 import { useSessionStore } from './state/sessionStore'
 import { useWorkspaceStore } from './state/workspaceStore'
+import { useLayoutStore } from './state/layoutStore'
 import type { SessionType } from '@shared/session'
 
 export function App(): ReactElement {
-  const workspaces = useWorkspaceStore((s) => s.workspaces)
-  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const setWorkspaces = useWorkspaceStore((s) => s.setWorkspaces)
-  const upsertWorkspace = useWorkspaceStore((s) => s.upsertWorkspace)
-  const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace)
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
 
-  const orderedSessionIds = useSessionStore((s) => s.order)
-  const sessions = useSessionStore((s) => s.sessions)
-  const activeSessionId = useSessionStore((s) => s.activeId)
+  const order = useSessionStore((s) => s.order)
   const setActive = useSessionStore((s) => s.setActive)
   const addSession = useSessionStore((s) => s.addSession)
+  const lastUsedType = useSessionStore((s) => s.lastUsedType)
 
-  const [error, setError] = useState<string | null>(null)
+  const cycleMode = useLayoutStore((s) => s.cycleMode)
+  const setExperimentalEnabled = useLayoutStore((s) => s.setExperimentalEnabled)
+
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   useEffect(() => {
-    let cancelled = false
-    void window.ws.workspace.list().then((res) => {
-      if (cancelled) return
-      setWorkspaces(res.workspaces)
-    })
-    return () => {
-      cancelled = true
-    }
+    void window.ws.workspace.list().then((res) => setWorkspaces(res.workspaces))
   }, [setWorkspaces])
 
-  const openWorkspace = useCallback(async () => {
-    setError(null)
-    try {
-      const res = await window.ws.workspace.open()
-      if (!res.workspace) return
-      upsertWorkspace(res.workspace)
-      setActiveWorkspace(res.workspace.id)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.has('experimentalLayouts')) {
+      setExperimentalEnabled(params.get('experimentalLayouts') !== '0')
     }
-  }, [upsertWorkspace, setActiveWorkspace])
+  }, [setExperimentalEnabled])
 
-  const spawnSession = useCallback(
+  const spawnLastUsed = useCallback(
     async (type: SessionType) => {
-      setError(null)
-      if (!activeWorkspaceId) {
-        setError('Open a workspace first')
-        return
-      }
-      try {
-        const res = await window.ws.session.spawn({
-          workspaceId: activeWorkspaceId,
-          type,
-          cols: 80,
-          rows: 24,
-        })
-        addSession({
-          id: res.sessionId,
-          workspaceId: activeWorkspaceId,
-          type,
-          label: res.label,
-          state: 'idle',
-          hasUnseenWaiting: false,
-        })
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err))
-      }
+      if (!activeWorkspaceId) return
+      const res = await window.ws.session.spawn({
+        workspaceId: activeWorkspaceId,
+        type,
+        cols: 80,
+        rows: 24,
+      })
+      addSession({
+        id: res.sessionId,
+        workspaceId: activeWorkspaceId,
+        type,
+        label: res.label,
+        state: 'idle',
+        hasUnseenWaiting: false,
+      })
     },
     [activeWorkspaceId, addSession],
   )
 
-  const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId) ?? null
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.ctrlKey && !e.altKey) {
+        if (e.shiftKey && (e.key === 'T' || e.key === 't')) {
+          e.preventDefault()
+          void spawnLastUsed(lastUsedType)
+          return
+        }
+        if (!e.shiftKey && e.key === '\\') {
+          e.preventDefault()
+          cycleMode()
+          return
+        }
+        if (!e.shiftKey && /^[1-9]$/.test(e.key)) {
+          const idx = Number.parseInt(e.key, 10) - 1
+          const id = order[idx]
+          if (id) {
+            e.preventDefault()
+            setActive(id)
+          }
+          return
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [order, setActive, cycleMode, spawnLastUsed, lastUsedType])
 
   return (
-    <div className="flex h-screen w-screen flex-col bg-bg text-fg">
-      <header className="flex items-center gap-3 border-b border-border bg-bg-sunken px-4 py-2 text-sm">
-        <span className="font-semibold tracking-tight">ClaudeWorkspace</span>
-        <span className="text-muted">|</span>
-        <span className="font-mono text-fg-subtle">
-          {activeWorkspace ? activeWorkspace.name : 'no workspace'}
-        </span>
-        <div className="ml-auto flex items-center gap-2">
-          <button
-            type="button"
-            onClick={openWorkspace}
-            className="rounded-sm border border-border bg-bg-elevated px-2.5 py-1 text-xs hover:border-border-strong hover:bg-bg"
-          >
-            Open workspace
-          </button>
-          <button
-            type="button"
-            onClick={() => spawnSession('shell')}
-            disabled={!activeWorkspaceId}
-            className="rounded-sm border border-border bg-bg-elevated px-2.5 py-1 text-xs hover:border-border-strong hover:bg-bg disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            New shell
-          </button>
-          <button
-            type="button"
-            onClick={() => spawnSession('claude')}
-            disabled={!activeWorkspaceId}
-            className="rounded-sm border border-accent bg-accent/10 px-2.5 py-1 text-xs text-accent hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            New claude
-          </button>
-        </div>
-      </header>
+    <div className="flex h-screen w-screen bg-bg text-fg">
+      <WorkspaceSidebar settingsOpen={settingsOpen} onSettingsToggle={() => setSettingsOpen((v) => !v)} />
 
-      {error && (
-        <div role="alert" className="border-b border-error/40 bg-error/10 px-4 py-1.5 text-xs text-error">
-          {error}
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <header className="flex items-center justify-between border-b border-border bg-bg-sunken px-3 py-1.5 text-xs">
+          <span className="font-semibold tracking-tight">ClaudeWorkspace</span>
+          <LayoutSwitcher />
+        </header>
+        <SessionTabs />
+        <div className="flex-1 overflow-hidden">
+          <PaneMosaic />
         </div>
-      )}
-
-      <div className="flex flex-1 overflow-hidden">
-        {orderedSessionIds.length === 0 ? (
-          <div className="grid flex-1 place-items-center text-muted">
-            <div className="flex flex-col items-center gap-2">
-              <p>No sessions yet.</p>
-              <p className="text-xs">
-                Open a workspace, then click <span className="text-fg-subtle">New shell</span> or{' '}
-                <span className="text-accent">New claude</span>.
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div className="grid flex-1 gap-2 p-2" style={{ gridTemplateColumns: `repeat(${Math.min(orderedSessionIds.length, 2)}, 1fr)` }}>
-            {orderedSessionIds.map((id) => {
-              const s = sessions[id]
-              if (!s) return null
-              return (
-                <TerminalPane
-                  key={id}
-                  sessionId={id}
-                  isActive={id === activeSessionId}
-                  onFocus={() => setActive(id)}
-                />
-              )
-            })}
-          </div>
-        )}
+        <footer className="flex items-center justify-between border-t border-border bg-bg-sunken px-3 py-1 text-[10px] text-muted">
+          <span>Ctrl+1–9 focus · Ctrl+\ cycle layout · Ctrl+Shift+T new {lastUsedType}</span>
+          <span>{order.length} session{order.length === 1 ? '' : 's'}</span>
+        </footer>
       </div>
+
+      {settingsOpen && activeWorkspaceId && (
+        <SettingsPanel workspaceId={activeWorkspaceId} onClose={() => setSettingsOpen(false)} />
+      )}
     </div>
   )
 }

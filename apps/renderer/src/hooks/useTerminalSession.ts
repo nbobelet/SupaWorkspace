@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { Terminal, type ITheme } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
@@ -36,7 +36,9 @@ const xtermTheme: ITheme = {
 interface TerminalHandle {
   term: Terminal
   fit: FitAddon
-  dispose: () => void
+  element: HTMLDivElement
+  webgl: WebglAddon | null
+  inputDisposable: { dispose: () => void }
 }
 
 const handles = new Map<string, TerminalHandle>()
@@ -56,11 +58,7 @@ function ensureGlobalListeners(): void {
 
   globalExitUnsub = window.ws.session.onExit(({ sessionId }) => {
     useSessionStore.getState().removeSession(sessionId)
-    const handle = handles.get(sessionId)
-    if (handle) {
-      handle.dispose()
-      handles.delete(sessionId)
-    }
+    disposeTerminal(sessionId)
   })
 
   globalStateUnsub = window.ws.session.onState(({ sessionId, state }) => {
@@ -88,24 +86,32 @@ function getOrCreateHandle(sessionId: string): TerminalHandle {
   term.loadAddon(new WebLinksAddon())
   term.loadAddon(new SearchAddon())
 
-  const onUserInput = term.onData((data) => {
+  const element = document.createElement('div')
+  element.style.width = '100%'
+  element.style.height = '100%'
+  element.dataset['sessionId'] = sessionId
+
+  term.open(element)
+
+  let webgl: WebglAddon | null = null
+  try {
+    webgl = new WebglAddon()
+    term.loadAddon(webgl)
+  } catch (err) {
+    console.warn('[xterm] WebGL renderer unavailable, falling back:', err)
+    webgl = null
+  }
+
+  const inputDisposable = term.onData((data) => {
     void window.ws.session.write({ sessionId, data })
   })
 
-  const dispose = (): void => {
-    onUserInput.dispose()
-    term.dispose()
-  }
-
-  const handle: TerminalHandle = { term, fit, dispose }
+  const handle: TerminalHandle = { term, fit, element, webgl, inputDisposable }
   handles.set(sessionId, handle)
   return handle
 }
 
 export function useTerminalSession(sessionId: string, container: HTMLElement | null): void {
-  const openedRef = useRef(false)
-  const webglRef = useRef<WebglAddon | null>(null)
-
   useEffect(() => {
     ensureGlobalListeners()
   }, [])
@@ -114,45 +120,27 @@ export function useTerminalSession(sessionId: string, container: HTMLElement | n
     if (!container) return
     const handle = getOrCreateHandle(sessionId)
 
-    if (!openedRef.current) {
-      handle.term.open(container)
-      openedRef.current = true
+    container.appendChild(handle.element)
 
-      try {
-        const webgl = new WebglAddon()
-        handle.term.loadAddon(webgl)
-        webglRef.current = webgl
-      } catch (err) {
-        console.warn('[xterm] WebGL renderer unavailable, falling back to canvas/dom:', err)
-      }
-
-      requestAnimationFrame(() => {
-        try {
-          handle.fit.fit()
-          const { cols, rows } = handle.term
-          void window.ws.session.resize({ sessionId, cols, rows })
-        } catch {
-          // container not measurable yet
-        }
-      })
-    }
-
-    const observer = new ResizeObserver(() => {
+    const fitAndReport = (): void => {
       try {
         handle.fit.fit()
         const { cols, rows } = handle.term
         void window.ws.session.resize({ sessionId, cols, rows })
       } catch {
-        // container vanished
+        // container not measurable yet
       }
-    })
+    }
+
+    requestAnimationFrame(fitAndReport)
+
+    const observer = new ResizeObserver(() => fitAndReport())
     observer.observe(container)
 
     return () => {
       observer.disconnect()
-      if (webglRef.current) {
-        webglRef.current.dispose()
-        webglRef.current = null
+      if (handle.element.parentNode === container) {
+        container.removeChild(handle.element)
       }
     }
   }, [sessionId, container])
@@ -161,7 +149,10 @@ export function useTerminalSession(sessionId: string, container: HTMLElement | n
 export function disposeTerminal(sessionId: string): void {
   const handle = handles.get(sessionId)
   if (!handle) return
-  handle.dispose()
+  handle.inputDisposable.dispose()
+  handle.webgl?.dispose()
+  handle.term.dispose()
+  handle.element.remove()
   handles.delete(sessionId)
 }
 
