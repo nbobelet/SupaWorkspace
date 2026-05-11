@@ -28,6 +28,13 @@ export function App(): ReactElement {
   }, [setWorkspaces])
 
   useEffect(() => {
+    const unsubscribe = window.ws.session.onFocus(({ sessionId }) => {
+      setActive(sessionId)
+    })
+    return unsubscribe
+  }, [setActive])
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     if (params.has('experimentalLayouts')) {
       setExperimentalEnabled(params.get('experimentalLayouts') !== '0')

@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { runPtySmoke } from './pty/smoke'
 import { SessionManager } from './pty/SessionManager'
 import { WorkspaceStore } from './workspace/WorkspaceStore'
+import { Notifier } from './notifications/Notifier'
 import { registerSessionIpc } from './ipc/session'
 import { registerWorkspaceIpc } from './ipc/workspace'
 import { registerPermissionsIpc } from './ipc/permissions'
@@ -75,14 +76,20 @@ void app.whenReady().then(async () => {
   }
 
   const workspaceStore = new WorkspaceStore()
+  const notifier = new Notifier(getMainWindow, workspaceStore)
   const sessionManager = new SessionManager({
     onData: (sessionId, data) => broadcast(IpcChannel.SessionData, { sessionId, data }),
-    onExit: (sessionId, exitCode, signal) =>
-      broadcast(IpcChannel.SessionExit, { sessionId, exitCode, signal }),
-    onState: (sessionId, state) => broadcast(IpcChannel.SessionState, { sessionId, state }),
+    onExit: (sessionId, exitCode, signal) => {
+      broadcast(IpcChannel.SessionExit, { sessionId, exitCode, signal })
+      notifier.unregisterSession(sessionId)
+    },
+    onState: (sessionId, state) => {
+      broadcast(IpcChannel.SessionState, { sessionId, state })
+      notifier.handleStateChange(sessionId, state)
+    },
   })
 
-  registerSessionIpc({ sessionManager, workspaceStore })
+  registerSessionIpc({ sessionManager, workspaceStore, onSpawn: (cfg) => notifier.registerSession(cfg) })
   registerWorkspaceIpc({ workspaceStore, getMainWindow })
   registerPermissionsIpc({ workspaceStore, getMainWindow })
 

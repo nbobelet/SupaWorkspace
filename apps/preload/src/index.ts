@@ -44,6 +44,8 @@ const api = {
       on<SessionExitEvent>(IpcChannel.SessionExit, listener),
     onState: (listener: (event: SessionStateEvent) => void): Unsubscribe =>
       on<SessionStateEvent>(IpcChannel.SessionState, listener),
+    onFocus: (listener: (event: { sessionId: string }) => void): Unsubscribe =>
+      on<{ sessionId: string }>(IpcChannel.SessionFocus, listener),
   },
   workspace: {
     list: (): Promise<WorkspaceListResponse> => ipcRenderer.invoke(IpcChannel.WorkspaceList),

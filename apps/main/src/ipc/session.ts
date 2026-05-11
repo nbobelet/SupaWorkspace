@@ -7,14 +7,16 @@ import {
   SessionWriteRequest,
   type SessionSpawnResponse,
 } from '@shared/ipc'
+import type { SessionConfig } from '@shared/session'
 import type { SessionManager } from '../pty/SessionManager'
 import type { WorkspaceStore } from '../workspace/WorkspaceStore'
 
 export function registerSessionIpc(opts: {
   sessionManager: SessionManager
   workspaceStore: WorkspaceStore
+  onSpawn?: (config: SessionConfig) => void
 }): () => void {
-  const { sessionManager, workspaceStore } = opts
+  const { sessionManager, workspaceStore, onSpawn } = opts
 
   ipcMain.handle(IpcChannel.SessionSpawn, async (_, raw): Promise<SessionSpawnResponse> => {
     const req = SessionSpawnRequest.parse(raw)
@@ -28,6 +30,7 @@ export function registerSessionIpc(opts: {
       rows: req.rows,
       label: req.label,
     })
+    onSpawn?.(config)
     return { sessionId: config.id, label: config.label }
   })
 

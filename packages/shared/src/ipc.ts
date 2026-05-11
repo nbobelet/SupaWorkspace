@@ -10,6 +10,7 @@ export const IpcChannel = {
   SessionData: 'session:data',
   SessionExit: 'session:exit',
   SessionState: 'session:state',
+  SessionFocus: 'session:focus',
   WorkspaceList: 'workspace:list',
   WorkspaceOpen: 'workspace:open',
   WorkspaceRename: 'workspace:rename',
