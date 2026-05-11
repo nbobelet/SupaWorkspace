@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactElement } from 'react'
 import { Mosaic, MosaicWindow, type MosaicNode } from 'react-mosaic-component'
-import 'react-mosaic-component/styles.css'
+import 'react-mosaic-component/react-mosaic-component.css'
 import { TerminalPane } from './TerminalPane'
 import { useSessionStore } from '../state/sessionStore'
 import { useLayoutStore } from '../state/layoutStore'
