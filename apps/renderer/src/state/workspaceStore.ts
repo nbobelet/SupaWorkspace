@@ -9,6 +9,7 @@ interface WorkspaceStoreState {
   upsertWorkspace: (workspace: Workspace) => void
   removeWorkspace: (id: string) => void
   setActiveWorkspace: (id: string | null) => void
+  setColor: (id: string, hue: number) => Promise<void>
   getActiveWorkspace: () => Workspace | null
 }
 
@@ -46,6 +47,13 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
     }),
 
   setActiveWorkspace: (id) => set({ activeWorkspaceId: id }),
+
+  setColor: async (id: string, hue: number): Promise<void> => {
+    const updated = await window.ws.workspace.setColor(id, hue)
+    set((prev) => ({
+      workspaces: prev.workspaces.map((w) => (w.id === id ? updated : w)),
+    }))
+  },
 
   getActiveWorkspace: () => {
     const { workspaces, activeWorkspaceId } = get()

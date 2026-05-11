@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react'
+import { Settings as SettingsIcon } from 'lucide-react'
 import { useWorkspaceStore } from '../state/workspaceStore'
 import {
   recentByWorkspace,
@@ -8,6 +9,7 @@ import {
 } from '../state/notificationStore'
 import { useSessionStore } from '../state/sessionStore'
 import { useInlineRename } from '../hooks/useInlineRename'
+import { WorkspaceSettingsMenu } from './WorkspaceSettingsMenu'
 import type { Workspace } from '@shared/workspace'
 
 interface ContextMenuState {
@@ -35,6 +37,8 @@ export function WorkspaceSidebar({ onSettingsToggle, settingsOpen }: WorkspaceSi
 
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   const [bellOpen, setBellOpen] = useState<string | null>(null)
+  const [settingsOpenFor, setSettingsOpenFor] = useState<string | null>(null)
+  const setColor = useWorkspaceStore((s) => s.setColor)
 
   const rename = useInlineRename(async (id, newName) => {
     const updated = await window.ws.workspace.rename(id, newName)
@@ -45,6 +49,7 @@ export function WorkspaceSidebar({ onSettingsToggle, settingsOpen }: WorkspaceSi
     const close = (): void => {
       setMenu(null)
       setBellOpen(null)
+      setSettingsOpenFor(null)
     }
     window.addEventListener('click', close)
     window.addEventListener('blur', close)
@@ -147,6 +152,13 @@ export function WorkspaceSidebar({ onSettingsToggle, settingsOpen }: WorkspaceSi
             onBellToggle={() => setBellOpen((prev) => (prev === w.id ? null : w.id))}
             onMarkAllRead={() => markAllReadForWorkspace(w.id)}
             onOpenNotif={openNotif}
+            settingsOpen={settingsOpenFor === w.id}
+            onSettingsToggle={() =>
+              setSettingsOpenFor((prev) => (prev === w.id ? null : w.id))
+            }
+            onStartRename={() => rename.startRename(w.id, w.name)}
+            onChangeColor={(hue) => void setColor(w.id, hue)}
+            onDelete={() => void remove(w.id)}
           />
         ))}
       </ul>
@@ -197,6 +209,11 @@ interface WorkspaceTileProps {
   onBellToggle: () => void
   onMarkAllRead: () => void
   onOpenNotif: (notif: RendererNotification) => void
+  settingsOpen: boolean
+  onSettingsToggle: () => void
+  onStartRename: () => void
+  onChangeColor: (hue: number) => void
+  onDelete: () => void
 }
 
 function WorkspaceTile({
@@ -214,12 +231,21 @@ function WorkspaceTile({
   onBellToggle,
   onMarkAllRead,
   onOpenNotif,
+  settingsOpen,
+  onSettingsToggle,
+  onStartRename,
+  onChangeColor,
+  onDelete,
 }: WorkspaceTileProps): ReactElement {
   const unread = useMemo(() => unreadCountByWorkspace(notifications, w.id), [notifications, w.id])
   const recent = useMemo(() => recentByWorkspace(notifications, w.id, 10), [notifications, w.id])
 
+  const pillStyle = w.color
+    ? { background: `oklch(70% 0.15 ${w.color.hue}deg)` }
+    : undefined
+
   return (
-    <li className="relative">
+    <li className="group/tile relative">
       <div
         className={[
           'flex w-full items-start gap-2 px-3 py-2 text-left text-sm',
@@ -232,7 +258,15 @@ function WorkspaceTile({
           onContextMenu={(e) => onContextMenu(e, w)}
           className="flex min-w-0 flex-1 items-start gap-2 text-left"
         >
-          <span className="mt-0.5 text-xs text-muted">●</span>
+          {w.color ? (
+            <span
+              className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+              style={pillStyle}
+              aria-hidden="true"
+            />
+          ) : (
+            <span className="mt-0.5 text-xs text-muted">●</span>
+          )}
           <span className="flex min-w-0 flex-1 flex-col">
             {isRenaming ? (
               <input
@@ -280,7 +314,33 @@ function WorkspaceTile({
             </span>
           )}
         </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onSettingsToggle()
+          }}
+          aria-label={`Workspace settings for ${w.name}`}
+          aria-expanded={settingsOpen}
+          className={[
+            'shrink-0 rounded-sm px-1 py-0.5 text-muted hover:text-fg',
+            settingsOpen ? 'opacity-100' : 'opacity-0 group-hover/tile:opacity-100 focus-visible:opacity-100',
+          ].join(' ')}
+          title="Workspace settings"
+        >
+          <SettingsIcon size={14} aria-hidden="true" />
+        </button>
       </div>
+
+      {settingsOpen && (
+        <WorkspaceSettingsMenu
+          workspace={w}
+          onRename={onStartRename}
+          onChangeColor={onChangeColor}
+          onDelete={onDelete}
+          onClose={onSettingsToggle}
+        />
+      )}
 
       {bellOpen && (
         <div
