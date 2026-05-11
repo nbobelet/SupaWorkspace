@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react'
+import { toast } from 'sonner'
 import { Settings as SettingsIcon } from 'lucide-react'
 import { useWorkspaceStore } from '../state/workspaceStore'
 import {
@@ -76,6 +77,11 @@ export function WorkspaceSidebar({ onSettingsToggle, settingsOpen }: WorkspaceSi
     if (res.workspace) {
       upsertWorkspace(res.workspace)
       setActiveWorkspace(res.workspace.id)
+      if (res.wasExisting) {
+        toast.info(`Already open as "${res.workspace.name}"`, {
+          description: 'Switched to the existing workspace.',
+        })
+      }
     }
   }, [upsertWorkspace, setActiveWorkspace])
 

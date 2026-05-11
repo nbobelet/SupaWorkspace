@@ -1,4 +1,5 @@
 import { useCallback, type ReactElement } from 'react'
+import { toast } from 'sonner'
 import { useWorkspaceStore } from '../state/workspaceStore'
 import { useSessionStore } from '../state/sessionStore'
 import type { SessionType } from '@shared/session'
@@ -15,6 +16,11 @@ export function WelcomePane(): ReactElement {
     if (res.workspace) {
       upsertWorkspace(res.workspace)
       setActiveWorkspace(res.workspace.id)
+      if (res.wasExisting) {
+        toast.info(`Already open as "${res.workspace.name}"`, {
+          description: 'Switched to the existing workspace.',
+        })
+      }
     }
   }, [upsertWorkspace, setActiveWorkspace])
 

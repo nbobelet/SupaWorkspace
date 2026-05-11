@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactElement } from 'react'
-import type { ClaudeSettings } from '@shared/ipc'
+import type { ClaudeSettings, PathGrantConflict } from '@shared/ipc'
 import type { PathGrant, Workspace } from '@shared/workspace'
 import { useWorkspaceStore } from '../../state/workspaceStore'
 
@@ -19,6 +19,7 @@ export function PermissionsManager({ workspaceId }: PermissionsManagerProps): Re
   const [error, setError] = useState<string | null>(null)
   const [newAllow, setNewAllow] = useState('')
   const [newDeny, setNewDeny] = useState('')
+  const [conflicts, setConflicts] = useState<PathGrantConflict[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -38,6 +39,19 @@ export function PermissionsManager({ workspaceId }: PermissionsManagerProps): Re
       cancelled = true
     }
   }, [workspaceId])
+
+  useEffect(() => {
+    let cancelled = false
+    void window.ws.permissions
+      .grantConflicts()
+      .then((res) => {
+        if (!cancelled) setConflicts(res.conflicts)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [workspaceId, workspaces])
 
   const saveRule = useCallback(
     async (list: RuleList, values: string[]) => {
@@ -69,12 +83,41 @@ export function PermissionsManager({ workspaceId }: PermissionsManagerProps): Re
   const denyList = (settings.permissions?.deny ?? []) as string[]
   const grants: PathGrant[] = workspace?.permissions.extraPaths ?? []
 
+  const relevantConflicts = conflicts.filter((c) =>
+    c.workspaces.some((w) => w.id === workspaceId),
+  )
+
   return (
     <div className="flex flex-col gap-3 text-xs">
       {error && (
         <div role="alert" className="rounded-sm border border-error/40 bg-error/10 px-2 py-1 text-error">
           {error}
         </div>
+      )}
+
+      {relevantConflicts.length > 0 && (
+        <section
+          role="status"
+          aria-live="polite"
+          className="rounded-sm border border-warn/40 bg-warn/10 px-2 py-2 text-warn"
+        >
+          <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wider">
+            Cross-workspace grant conflicts ({relevantConflicts.length})
+          </h3>
+          <ul className="flex flex-col gap-1">
+            {relevantConflicts.map((c) => (
+              <li key={c.path} className="text-[11px]">
+                <p className="truncate font-mono" title={c.path}>{c.path}</p>
+                <p className="text-[10px] text-warn/80">
+                  Granted in: {c.workspaces.map((w) => `${w.name} (${w.kind})`).join(', ')}
+                </p>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-[10px] text-warn/80">
+            Same path granted in multiple workspaces with possibly different kinds. Revoke duplicates to keep scopes clean.
+          </p>
+        </section>
       )}
 
       <RuleSection
