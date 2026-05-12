@@ -72,17 +72,20 @@ export function WorkspaceSidebar(): ReactElement {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(
     () => new Set(activeWorkspaceId ? [activeWorkspaceId] : []),
   )
+  const prevActiveRef = useRef<string | null>(activeWorkspaceId ?? null)
 
-  // When the active workspace changes, auto-expand it
+  // When the active workspace changes, expand it and collapse the previous one
   useEffect(() => {
-    if (activeWorkspaceId) {
-      setExpandedIds((prev) => {
-        if (prev.has(activeWorkspaceId)) return prev
-        const next = new Set(prev)
-        next.add(activeWorkspaceId)
-        return next
-      })
-    }
+    if (!activeWorkspaceId) return
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      if (prevActiveRef.current && prevActiveRef.current !== activeWorkspaceId) {
+        next.delete(prevActiveRef.current)
+      }
+      next.add(activeWorkspaceId)
+      return next
+    })
+    prevActiveRef.current = activeWorkspaceId
   }, [activeWorkspaceId])
 
   const toggleExpand = useCallback((id: string) => {
