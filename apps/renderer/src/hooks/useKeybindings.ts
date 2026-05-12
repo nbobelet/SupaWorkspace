@@ -54,8 +54,15 @@ function isEditableTarget(el: EventTarget | null): boolean {
 // (input/textarea/select/contenteditable) still suppresses the chord —
 // users typing in a rename field or the bug-report dialog get the
 // browser's native find.
+//
+// Subtle point: xterm.js captures keystrokes through `.xterm-helper-textarea`,
+// a real `<textarea>` element. The standard `INPUT/TEXTAREA/SELECT` check
+// would therefore block Cmd+F when the user is typing in the terminal —
+// the exact case the brief tells us to allow. We special-case it by
+// checking the `.xterm` ancestor BEFORE the tag check.
 function isEditableTargetExceptXterm(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false
+  if (el.closest('.xterm')) return false
   const tag = el.tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
   if (el.isContentEditable) return true
@@ -111,6 +118,10 @@ export function useKeybindings(handlers: KeybindingHandlers): void {
         handlers.jumpToSession(n - 1),
       )
     }
-    return tinykeys(window, bindings)
+    // Capture-phase listener so the chord fires before xterm.js's
+    // textarea-level keydown handler (which prevents default for keys it
+    // captures). Without capture, Ctrl+F inside an xterm-focused pane
+    // would never reach our toggle.
+    return tinykeys(window, bindings, { capture: true })
   }, [handlers])
 }
