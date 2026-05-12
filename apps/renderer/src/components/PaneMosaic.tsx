@@ -5,6 +5,7 @@ import { TerminalPane } from './TerminalPane'
 import { useScopedOrder, useSessionStore } from '../state/sessionStore'
 import { useWorkspaceStore } from '../state/workspaceStore'
 import { useLayoutStore } from '../state/layoutStore'
+import { focusSession } from '../hooks/useTerminalSession'
 import { CascadeLayout } from './CascadeLayout'
 import { WelcomePane } from './WelcomePane'
 import { EmptyWorkspaceState } from './EmptyWorkspaceState'
@@ -96,7 +97,10 @@ export function PaneMosaic(): ReactElement {
     if (!id) return <div />
     return (
       <div className="h-full w-full p-2">
-        <TerminalPane sessionId={id} isActive={id === activeId} onFocus={() => setActive(id)} />
+        <TerminalPane sessionId={id} isActive={id === activeId} onFocus={() => {
+                setActive(id)
+                requestAnimationFrame(() => focusSession(id))
+              }} />
       </div>
     )
   }
@@ -115,7 +119,10 @@ export function PaneMosaic(): ReactElement {
               title={s.label}
               toolbarControls={[]}
             >
-              <TerminalPane sessionId={id} isActive={id === activeId} onFocus={() => setActive(id)} />
+              <TerminalPane sessionId={id} isActive={id === activeId} onFocus={() => {
+                setActive(id)
+                requestAnimationFrame(() => focusSession(id))
+              }} />
             </MosaicWindow>
           )
         }}

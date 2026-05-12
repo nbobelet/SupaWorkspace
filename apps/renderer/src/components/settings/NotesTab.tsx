@@ -1,5 +1,5 @@
 import { useEffect, type ReactElement } from 'react'
-import CodeMirror from '@uiw/react-codemirror'
+import CodeMirror, { EditorView } from '@uiw/react-codemirror'
 import { markdown } from '@codemirror/lang-markdown'
 import { useNotesStore } from '../../state/notesStore'
 
@@ -28,7 +28,7 @@ export function NotesTab(): ReactElement {
           onChange={(v) => setContent(v)}
           height="100%"
           theme="dark"
-          extensions={[markdown()]}
+          extensions={[markdown(), EditorView.lineWrapping]}
           basicSetup={{
             lineNumbers: true,
             highlightActiveLine: true,

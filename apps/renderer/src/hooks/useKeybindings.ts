@@ -13,6 +13,10 @@ export interface KeybindingHandlers {
   renameActiveWorkspace: () => void
   togglePalette: () => void
   cycleLayout: () => void
+  reorderActiveTabLeft: () => void
+  reorderActiveTabRight: () => void
+  splitVertical: () => void
+  splitHorizontal: () => void
 }
 
 function isEditableTarget(el: EventTarget | null): boolean {
@@ -45,6 +49,10 @@ export function useKeybindings(handlers: KeybindingHandlers): void {
       F2: guard(handlers.renameActiveWorkspace),
       '$mod+k': guard(handlers.togglePalette),
       '$mod+\\': guard(handlers.cycleLayout),
+      '$mod+Shift+ArrowLeft': guard(handlers.reorderActiveTabLeft),
+      '$mod+Shift+ArrowRight': guard(handlers.reorderActiveTabRight),
+      '$mod+Shift+\\': guard(handlers.splitVertical),
+      '$mod+Shift+-': guard(handlers.splitHorizontal),
     }
     for (let n = 1; n <= 9; n += 1) {
       bindings[`$mod+Digit${n}`] = guard(() => handlers.jumpToSession(n - 1))

@@ -1,14 +1,41 @@
-import { useCallback, useEffect, type ReactElement } from 'react'
+import { useCallback, useEffect, useState, type ReactElement } from 'react'
 import { Terminal, Sparkles } from 'lucide-react'
-import { useScopedOrder, useSessionStore } from '../state/sessionStore'
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { useScopedOrder, useSessionStore, useHighestPriorityTabId } from '../state/sessionStore'
 import { useWorkspaceStore } from '../state/workspaceStore'
+import { useLayoutStore } from '../state/layoutStore'
 import { useInlineRename } from '../hooks/useInlineRename'
+import { focusSession } from '../hooks/useTerminalSession'
+import { getSessionStatus } from '../state/sessionStatus'
+import { StatusIcon } from './StatusIcon'
+import { TabContextMenu, type TabAction } from './TabContextMenu'
 import type { SessionType } from '@shared/session'
 
 function truncateMiddle(text: string, maxLen = 40): string {
   if (text.length <= maxLen) return text
   const half = Math.floor((maxLen - 1) / 2)
   return `${text.slice(0, half)}…${text.slice(text.length - half)}`
+}
+
+interface ContextMenuState {
+  sessionId: string
+  x: number
+  y: number
 }
 
 export function SessionTabs(): ReactElement {
@@ -18,10 +45,15 @@ export function SessionTabs(): ReactElement {
   const addSession = useSessionStore((s) => s.addSession)
   const renameSession = useSessionStore((s) => s.renameSession)
   const lastUsedType = useSessionStore((s) => s.lastUsedType)
+  const reorderScopedTab = useSessionStore((s) => s.reorderScopedTab)
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const workspaces = useWorkspaceStore((s) => s.workspaces)
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId)
   const scopedOrder = useScopedOrder()
+  const mostUrgentId = useHighestPriorityTabId()
+  const setLayoutMode = useLayoutStore((s) => s.setMode)
+
+  const [menu, setMenu] = useState<ContextMenuState | null>(null)
 
   const rename = useInlineRename(async (id, newLabel) => {
     const existing = sessions[id]
@@ -76,6 +108,77 @@ export function SessionTabs(): ReactElement {
     [activeWorkspaceId, addSession],
   )
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      if (!activeWorkspaceId) return
+      const { active, over } = event
+      if (!over || active.id === over.id) return
+      const from = scopedOrder.indexOf(String(active.id))
+      const to = scopedOrder.indexOf(String(over.id))
+      if (from === -1 || to === -1) return
+      reorderScopedTab(activeWorkspaceId, from, to)
+    },
+    [activeWorkspaceId, scopedOrder, reorderScopedTab],
+  )
+
+  const handleContextMenu = useCallback((event: React.MouseEvent, sessionId: string) => {
+    event.preventDefault()
+    setMenu({ sessionId, x: event.clientX, y: event.clientY })
+  }, [])
+
+  const closeMenu = useCallback(() => setMenu(null), [])
+
+  const handleAction = useCallback(
+    async (action: TabAction, sessionId: string) => {
+      const target = sessions[sessionId]
+      setMenu(null)
+      if (!target) return
+      switch (action) {
+        case 'split-h':
+          setActive(sessionId)
+          setLayoutMode('split-horizontal')
+          return
+        case 'split-v':
+          setActive(sessionId)
+          setLayoutMode('split-vertical')
+          return
+        case 'rename':
+          startRename(sessionId)
+          return
+        case 'duplicate':
+          if (!activeWorkspaceId) return
+          try {
+            const res = await window.ws.session.spawn({
+              workspaceId: activeWorkspaceId,
+              type: target.type,
+              cols: 80,
+              rows: 24,
+            })
+            addSession({
+              id: res.sessionId,
+              workspaceId: activeWorkspaceId,
+              type: target.type,
+              label: res.label,
+              state: 'idle',
+              hasUnseenWaiting: false,
+            })
+          } catch (err) {
+            console.error('[session] duplicate failed', err)
+          }
+          return
+        case 'close':
+          void window.ws.session.kill({ sessionId })
+          return
+      }
+    },
+    [sessions, activeWorkspaceId, setActive, setLayoutMode, startRename, addSession],
+  )
+
   const wsHue = activeWorkspace?.color?.hue
   const wsPillStyle = wsHue !== undefined ? { background: `oklch(70% 0.15 ${wsHue}deg)` } : undefined
 
@@ -95,79 +198,43 @@ export function SessionTabs(): ReactElement {
           </span>
         </div>
       )}
-      {scopedOrder.map((id) => {
-        const s = sessions[id]
-        if (!s) return null
-        const isActive = id === activeId
-        const isRenaming = rename.isRenaming(id)
-        const showBadge = s.hasUnseenWaiting && !isActive
-        return (
-          <div
-            key={id}
-            className={[
-              'group flex items-center gap-2 rounded-sm border px-2 py-1 transition-colors',
-              isActive
-                ? 'border-accent bg-bg-elevated text-fg'
-                : 'border-border bg-bg-elevated/40 text-fg-subtle hover:border-border-strong hover:text-fg',
-            ].join(' ')}
-            aria-current={isActive ? 'true' : undefined}
-          >
-            <button
-              type="button"
-              onClick={() => !isRenaming && setActive(id)}
-              onDoubleClick={() => startRename(id)}
-              className="flex items-center gap-2"
-              aria-label={`${s.label} session, state ${s.state}${showBadge ? ', waiting for input' : ''}`}
-            >
-              <span
-                className={[
-                  'h-1.5 w-1.5 rounded-full',
-                  s.state === 'running' ? 'bg-running' : '',
-                  s.state === 'waiting-for-input' ? 'bg-warn motion-safe:animate-pulse' : '',
-                  s.state === 'finished' ? 'bg-accent' : '',
-                  s.state === 'error' ? 'bg-error' : '',
-                  s.state === 'idle' ? 'bg-muted' : '',
-                ].join(' ')}
-              />
-              {isRenaming ? (
-                <input
-                  autoFocus
-                  value={rename.renameValue}
-                  onChange={(e) => rename.setRenameValue(e.target.value)}
-                  onBlur={() => void rename.commitRename(id)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void rename.commitRename(id)
-                    if (e.key === 'Escape') rename.cancelRename()
+
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext items={scopedOrder} strategy={horizontalListSortingStrategy}>
+          <div className="flex min-w-0 flex-1 items-center gap-1">
+            {scopedOrder.map((id) => {
+              const s = sessions[id]
+              if (!s) return null
+              return (
+                <SortableTab
+                  key={id}
+                  id={id}
+                  label={s.label}
+                  status={getSessionStatus(s.state)}
+                  isActive={id === activeId}
+                  isMostUrgent={id === mostUrgentId}
+                  isRenaming={rename.isRenaming(id)}
+                  renameValue={rename.renameValue}
+                  onRenameChange={rename.setRenameValue}
+                  onRenameCommit={() => void rename.commitRename(id)}
+                  onRenameCancel={rename.cancelRename}
+                  onActivate={() => {
+                    setActive(id)
+                    requestAnimationFrame(() => focusSession(id))
                   }}
-                  onClick={(e) => e.stopPropagation()}
-                  className="w-32 bg-bg px-1 py-0 font-mono text-xs outline-none ring-1 ring-accent"
-                  aria-label="Rename session"
+                  onStartRename={() => startRename(id)}
+                  onClose={() => void window.ws.session.kill({ sessionId: id })}
+                  onContextMenu={(e) => handleContextMenu(e, id)}
                 />
-              ) : (
-                <span className="font-mono">{s.label}</span>
-              )}
-              {showBadge && (
-                <span
-                  aria-live="polite"
-                  className="h-1.5 w-1.5 rounded-full bg-warn motion-safe:animate-pulse"
-                  title="Waiting for input"
-                />
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                void window.ws.session.kill({ sessionId: id })
-              }}
-              className="ml-1 text-muted hover:text-fg"
-              aria-label="Close session"
-            >
-              ×
-            </button>
+              )
+            })}
           </div>
-        )
-      })}
+        </SortableContext>
+      </DndContext>
 
       <div className="ml-3 flex shrink-0 items-center gap-1.5 border-l border-border pl-3">
         <button
@@ -202,6 +269,137 @@ export function SessionTabs(): ReactElement {
         </span>
       )}
       <span className="ml-2 shrink-0 text-[10px] text-muted">last-used: {lastUsedType}</span>
+
+      {menu && (
+        <TabContextMenu
+          sessionId={menu.sessionId}
+          x={menu.x}
+          y={menu.y}
+          onAction={(action) => void handleAction(action, menu.sessionId)}
+          onClose={closeMenu}
+        />
+      )}
+    </div>
+  )
+}
+
+interface SortableTabProps {
+  id: string
+  label: string
+  status: ReturnType<typeof getSessionStatus>
+  isActive: boolean
+  isMostUrgent: boolean
+  isRenaming: boolean
+  renameValue: string
+  onRenameChange: (value: string) => void
+  onRenameCommit: () => void
+  onRenameCancel: () => void
+  onActivate: () => void
+  onStartRename: () => void
+  onClose: () => void
+  onContextMenu: (e: React.MouseEvent) => void
+}
+
+function SortableTab({
+  id,
+  label,
+  status,
+  isActive,
+  isMostUrgent,
+  isRenaming,
+  renameValue,
+  onRenameChange,
+  onRenameCommit,
+  onRenameCancel,
+  onActivate,
+  onStartRename,
+  onClose,
+  onContextMenu,
+}: SortableTabProps): ReactElement {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id })
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : undefined,
+  }
+
+  const urgentClasses = isMostUrgent
+    ? [
+        'border-l-4',
+        status === 'error'
+          ? 'border-l-error ring-1 ring-error/60'
+          : 'border-l-warn ring-1 ring-warn/60',
+        'motion-safe:scale-[1.02]',
+      ].join(' ')
+    : ''
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      data-priority={status}
+      data-most-urgent={isMostUrgent ? 'true' : undefined}
+      className={[
+        'group flex shrink-0 items-center gap-2 rounded-sm border px-2 py-1 transition-transform',
+        isActive
+          ? 'border-accent bg-bg-elevated text-fg'
+          : 'border-border bg-bg-elevated/40 text-fg-subtle hover:border-border-strong hover:text-fg',
+        urgentClasses,
+        isDragging ? 'z-10' : '',
+      ].join(' ')}
+      aria-current={isActive ? 'true' : undefined}
+      onContextMenu={onContextMenu}
+      {...attributes}
+      {...listeners}
+    >
+      <button
+        type="button"
+        onClick={() => !isRenaming && onActivate()}
+        onDoubleClick={onStartRename}
+        className="flex items-center gap-2 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        aria-label={`${label} session, ${status}${isMostUrgent ? ', most urgent' : ''}`}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <StatusIcon status={status} size={12} />
+        {isRenaming ? (
+          <input
+            autoFocus
+            value={renameValue}
+            onChange={(e) => onRenameChange(e.target.value)}
+            onBlur={onRenameCommit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') onRenameCommit()
+              if (e.key === 'Escape') onRenameCancel()
+            }}
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="w-32 bg-bg px-1 py-0 font-mono text-xs outline-none ring-1 ring-accent"
+            aria-label="Rename session"
+          />
+        ) : (
+          <span className="font-mono">{label}</span>
+        )}
+      </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          onClose()
+        }}
+        onPointerDown={(e) => e.stopPropagation()}
+        className="ml-1 text-muted hover:text-fg"
+        aria-label="Close session"
+      >
+        ×
+      </button>
     </div>
   )
 }

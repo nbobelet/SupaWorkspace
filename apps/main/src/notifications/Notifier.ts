@@ -122,7 +122,10 @@ export class Notifier {
       if (!w) return
       if (w.isMinimized()) w.restore()
       w.focus()
-      w.webContents.send(IpcChannel.SessionFocus, { sessionId: session.id })
+      w.webContents.send(IpcChannel.SessionFocus, {
+        sessionId: session.id,
+        workspaceId: session.workspaceId,
+      })
     })
 
     notification.show()

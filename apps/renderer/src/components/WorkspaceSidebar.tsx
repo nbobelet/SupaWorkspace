@@ -1,16 +1,13 @@
-import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useState, type ReactElement } from 'react'
 import { toast } from 'sonner'
 import { Settings as SettingsIcon } from 'lucide-react'
 import { useWorkspaceStore } from '../state/workspaceStore'
-import {
-  recentByWorkspace,
-  unreadCountByWorkspace,
-  useNotificationStore,
-  type RendererNotification,
-} from '../state/notificationStore'
-import { useSessionStore } from '../state/sessionStore'
+import { useNotificationStore } from '../state/notificationStore'
+import { useWorkspaceWorstStatus } from '../state/sessionStore'
 import { useInlineRename } from '../hooks/useInlineRename'
+import { withViewTransition } from '../lib/viewTransition'
 import { WorkspaceSettingsMenu } from './WorkspaceSettingsMenu'
+import { StatusIcon } from './StatusIcon'
 import type { Workspace } from '@shared/workspace'
 
 interface ContextMenuState {
@@ -31,14 +28,9 @@ export function WorkspaceSidebar({ onSettingsToggle, settingsOpen }: WorkspaceSi
   const upsertWorkspace = useWorkspaceStore((s) => s.upsertWorkspace)
   const removeWorkspace = useWorkspaceStore((s) => s.removeWorkspace)
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace)
-  const notifications = useNotificationStore((s) => s.notifications)
-  const markRead = useNotificationStore((s) => s.markRead)
-  const markAllReadForWorkspace = useNotificationStore((s) => s.markAllReadForWorkspace)
   const clearForWorkspace = useNotificationStore((s) => s.clearForWorkspace)
-  const setActiveSession = useSessionStore((s) => s.setActive)
 
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
-  const [bellOpen, setBellOpen] = useState<string | null>(null)
   const [settingsOpenFor, setSettingsOpenFor] = useState<string | null>(null)
   const setColor = useWorkspaceStore((s) => s.setColor)
 
@@ -50,7 +42,6 @@ export function WorkspaceSidebar({ onSettingsToggle, settingsOpen }: WorkspaceSi
   useEffect(() => {
     const close = (): void => {
       setMenu(null)
-      setBellOpen(null)
       setSettingsOpenFor(null)
     }
     window.addEventListener('click', close)
@@ -75,10 +66,13 @@ export function WorkspaceSidebar({ onSettingsToggle, settingsOpen }: WorkspaceSi
   const openWorkspace = useCallback(async () => {
     const res = await window.ws.workspace.open()
     if (res.workspace) {
-      upsertWorkspace(res.workspace)
-      setActiveWorkspace(res.workspace.id)
+      const ws = res.workspace
+      withViewTransition(() => {
+        upsertWorkspace(ws)
+        setActiveWorkspace(ws.id)
+      })
       if (res.wasExisting) {
-        toast.info(`Already open as "${res.workspace.name}"`, {
+        toast.info(`Already open as "${ws.name}"`, {
           description: 'Switched to the existing workspace.',
         })
       }
@@ -114,16 +108,6 @@ export function WorkspaceSidebar({ onSettingsToggle, settingsOpen }: WorkspaceSi
     setMenu(null)
   }, [])
 
-  const openNotif = useCallback(
-    (notif: RendererNotification) => {
-      markRead(notif.id)
-      setActiveWorkspace(notif.workspaceId)
-      if (notif.sessionId) setActiveSession(notif.sessionId)
-      setBellOpen(null)
-    },
-    [markRead, setActiveWorkspace, setActiveSession],
-  )
-
   return (
     <aside className="flex w-60 flex-col border-r border-border bg-bg-sunken">
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
@@ -153,15 +137,10 @@ export function WorkspaceSidebar({ onSettingsToggle, settingsOpen }: WorkspaceSi
             onRenameCommit={rename.commitRename}
             onRenameCancel={rename.cancelRename}
             onActivate={() => {
-              setActiveWorkspace(w.id)
+              withViewTransition(() => setActiveWorkspace(w.id))
               clearForWorkspace(w.id)
             }}
             onContextMenu={handleContextMenu}
-            notifications={notifications}
-            bellOpen={bellOpen === w.id}
-            onBellToggle={() => setBellOpen((prev) => (prev === w.id ? null : w.id))}
-            onMarkAllRead={() => markAllReadForWorkspace(w.id)}
-            onOpenNotif={openNotif}
             settingsOpen={settingsOpenFor === w.id}
             onSettingsToggle={() =>
               setSettingsOpenFor((prev) => (prev === w.id ? null : w.id))
@@ -214,11 +193,6 @@ interface WorkspaceTileProps {
   onRenameCancel: () => void
   onActivate: () => void
   onContextMenu: (e: React.MouseEvent, w: Workspace) => void
-  notifications: RendererNotification[]
-  bellOpen: boolean
-  onBellToggle: () => void
-  onMarkAllRead: () => void
-  onOpenNotif: (notif: RendererNotification) => void
   settingsOpen: boolean
   onSettingsToggle: () => void
   onStartRename: () => void
@@ -236,19 +210,13 @@ function WorkspaceTile({
   onRenameCancel,
   onActivate,
   onContextMenu,
-  notifications,
-  bellOpen,
-  onBellToggle,
-  onMarkAllRead,
-  onOpenNotif,
   settingsOpen,
   onSettingsToggle,
   onStartRename,
   onChangeColor,
   onDelete,
 }: WorkspaceTileProps): ReactElement {
-  const unread = useMemo(() => unreadCountByWorkspace(notifications, w.id), [notifications, w.id])
-  const recent = useMemo(() => recentByWorkspace(notifications, w.id, 10), [notifications, w.id])
+  const worstStatus = useWorkspaceWorstStatus(w.id)
 
   const pillStyle = w.color
     ? { background: `oklch(70% 0.15 ${w.color.hue}deg)` }
@@ -257,6 +225,7 @@ function WorkspaceTile({
   return (
     <li className="group/tile relative">
       <div
+        data-priority={worstStatus}
         className={[
           'flex w-full items-start gap-2 px-3 py-2 text-left text-sm',
           isActive ? 'bg-bg-elevated text-fg' : 'text-fg-subtle hover:bg-bg-elevated/60',
@@ -300,30 +269,12 @@ function WorkspaceTile({
             </span>
           </span>
         </button>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            onBellToggle()
-          }}
-          aria-label={`${unread} unread notification${unread === 1 ? '' : 's'} for ${w.name}`}
-          aria-expanded={bellOpen}
-          className={[
-            'relative shrink-0 rounded-sm px-1 py-0.5 text-xs',
-            unread > 0 ? 'text-fg' : 'text-muted hover:text-fg',
-          ].join(' ')}
-          title="Notifications"
+        <span
+          className="mt-0.5 flex shrink-0 items-center"
+          title={`workspace status: ${worstStatus}`}
         >
-          <span aria-hidden="true">🔔</span>
-          {unread > 0 && (
-            <span
-              className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-warn px-0.5 text-[9px] font-bold text-bg motion-safe:animate-pulse"
-              aria-hidden="true"
-            >
-              {unread > 99 ? '99+' : unread}
-            </span>
-          )}
-        </button>
+          <StatusIcon status={worstStatus} size={14} />
+        </span>
         <button
           type="button"
           onClick={(e) => {
@@ -351,87 +302,8 @@ function WorkspaceTile({
           onClose={onSettingsToggle}
         />
       )}
-
-      {bellOpen && (
-        <div
-          role="dialog"
-          aria-label={`Notifications for ${w.name}`}
-          onClick={(e) => e.stopPropagation()}
-          className="absolute right-2 top-12 z-40 w-56 rounded-md border border-border bg-bg-elevated shadow-lg"
-        >
-          <div className="flex items-center justify-between border-b border-border px-2 py-1.5 text-[10px] uppercase tracking-wider text-muted">
-            <span>{w.name}</span>
-            {recent.length > 0 && (
-              <button
-                type="button"
-                onClick={onMarkAllRead}
-                className="text-fg-subtle hover:text-fg"
-              >
-                Mark all read
-              </button>
-            )}
-          </div>
-          <ul className="max-h-64 overflow-y-auto py-1">
-            {recent.length === 0 && (
-              <li className="px-2 py-2 text-xs text-muted">No notifications.</li>
-            )}
-            {recent.map((n) => (
-              <li key={n.id}>
-                <button
-                  type="button"
-                  onClick={() => onOpenNotif(n)}
-                  className={[
-                    'flex w-full items-start gap-2 px-2 py-1.5 text-left text-xs',
-                    n.read ? 'text-fg-subtle' : 'text-fg',
-                    'hover:bg-bg-sunken',
-                  ].join(' ')}
-                >
-                  <span
-                    className={[
-                      'mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full',
-                      n.kind === 'user-input-required' ? 'bg-warn' : '',
-                      n.kind === 'permission-prompt' ? 'bg-warn' : '',
-                      n.kind === 'request-complete' ? 'bg-accent' : '',
-                      n.kind === 'error' ? 'bg-error' : '',
-                    ].join(' ')}
-                    aria-hidden="true"
-                  />
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="font-mono">{n.sessionLabel}</span>
-                    <span className="text-[10px] text-muted">{notifLabel(n.kind)} · {formatTs(n.ts)}</span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </li>
   )
-}
-
-function notifLabel(kind: RendererNotification['kind']): string {
-  switch (kind) {
-    case 'user-input-required':
-      return 'waiting for input'
-    case 'permission-prompt':
-      return 'permission requested'
-    case 'request-complete':
-      return 'finished'
-    case 'error':
-      return 'errored'
-  }
-}
-
-function formatTs(ts: number): string {
-  const diff = Date.now() - ts
-  const sec = Math.floor(diff / 1000)
-  if (sec < 60) return `${sec}s ago`
-  const min = Math.floor(sec / 60)
-  if (min < 60) return `${min}m ago`
-  const hr = Math.floor(min / 60)
-  if (hr < 24) return `${hr}h ago`
-  return new Date(ts).toLocaleDateString()
 }
 
 interface ContextMenuProps {

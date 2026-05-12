@@ -12,6 +12,8 @@ import { useLayoutStore } from './state/layoutStore'
 import { useNotificationStore } from './state/notificationStore'
 import { usePaletteStore } from './state/paletteStore'
 import { useKeybindings } from './hooks/useKeybindings'
+import { focusSession } from './hooks/useTerminalSession'
+import { withViewTransition } from './lib/viewTransition'
 import type { SessionType } from '@shared/session'
 
 export function App(): ReactElement {
@@ -24,9 +26,11 @@ export function App(): ReactElement {
   const activeId = useSessionStore((s) => s.activeId)
   const addSession = useSessionStore((s) => s.addSession)
   const lastUsedType = useSessionStore((s) => s.lastUsedType)
+  const reorderScopedTab = useSessionStore((s) => s.reorderScopedTab)
   const scopedOrder = useScopedOrder()
 
   const cycleMode = useLayoutStore((s) => s.cycleMode)
+  const setLayoutMode = useLayoutStore((s) => s.setMode)
   const setExperimentalEnabled = useLayoutStore((s) => s.setExperimentalEnabled)
 
   const pushNotif = useNotificationStore((s) => s.push)
@@ -39,13 +43,40 @@ export function App(): ReactElement {
   }, [setWorkspaces])
 
   useEffect(() => {
-    const unsubscribe = window.ws.session.onFocus(({ sessionId }) => {
-      setActive(sessionId)
+    const unsubscribe = window.ws.session.onFocus(({ sessionId, workspaceId }) => {
+      withViewTransition(() => {
+        if (workspaceId) setActiveWorkspace(workspaceId)
+        setActive(sessionId)
+      })
+      requestAnimationFrame(() => focusSession(sessionId))
     })
     return unsubscribe
-  }, [setActive])
+  }, [setActive, setActiveWorkspace])
 
   useEffect(() => {
+    if (!activeWorkspaceId) return
+    const state = useSessionStore.getState()
+    const remembered = state.activeByWorkspace[activeWorkspaceId]
+    const stillValid =
+      remembered && state.sessions[remembered]?.workspaceId === activeWorkspaceId
+        ? remembered
+        : null
+    const fallback = state.order.find((sid) => state.sessions[sid]?.workspaceId === activeWorkspaceId)
+    const target = stillValid ?? fallback ?? null
+    if (target) {
+      setActive(target)
+      requestAnimationFrame(() => focusSession(target))
+    }
+  }, [activeWorkspaceId, setActive])
+
+  useEffect(() => {
+    const focusFromNotif = (workspaceId: string, sessionId?: string): void => {
+      withViewTransition(() => {
+        setActiveWorkspace(workspaceId)
+        if (sessionId) setActive(sessionId)
+      })
+      if (sessionId) requestAnimationFrame(() => focusSession(sessionId))
+    }
     const unsubscribe = window.ws.notifications.onPush((event) => {
       pushNotif(event)
       const title =
@@ -59,13 +90,17 @@ export function App(): ReactElement {
       const description = event.sessionLabel
         ? `${event.workspaceName} · ${event.sessionLabel}`
         : event.workspaceName
-      if (event.kind === 'error') toast.error(title, { description })
+      const action = {
+        label: 'Open',
+        onClick: () => focusFromNotif(event.workspaceId, event.sessionId),
+      }
+      if (event.kind === 'error') toast.error(title, { description, action })
       else if (event.kind === 'user-input-required' || event.kind === 'permission-prompt')
-        toast.warning(title, { description })
-      else toast.success(title, { description })
+        toast.warning(title, { description, action })
+      else toast.success(title, { description, action })
     })
     return unsubscribe
-  }, [pushNotif])
+  }, [pushNotif, setActive, setActiveWorkspace])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -101,7 +136,7 @@ export function App(): ReactElement {
       const idx = workspaces.findIndex((w) => w.id === activeWorkspaceId)
       const nextIdx = idx === -1 ? 0 : (idx + direction + workspaces.length) % workspaces.length
       const next = workspaces[nextIdx]
-      if (next) setActiveWorkspace(next.id)
+      if (next) withViewTransition(() => setActiveWorkspace(next.id))
     },
     [workspaces, activeWorkspaceId, setActiveWorkspace],
   )
@@ -120,6 +155,18 @@ export function App(): ReactElement {
       if (next) setActive(next)
     },
     [scopedOrder, activeId, setActive],
+  )
+
+  const reorderActiveTab = useCallback(
+    (direction: 1 | -1) => {
+      if (!activeWorkspaceId || !activeId) return
+      const from = scopedOrder.indexOf(activeId)
+      if (from === -1) return
+      const to = from + direction
+      if (to < 0 || to >= scopedOrder.length) return
+      reorderScopedTab(activeWorkspaceId, from, to)
+    },
+    [activeWorkspaceId, activeId, scopedOrder, reorderScopedTab],
   )
 
   useKeybindings({
@@ -146,6 +193,10 @@ export function App(): ReactElement {
     },
     togglePalette,
     cycleLayout: cycleMode,
+    reorderActiveTabLeft: () => reorderActiveTab(-1),
+    reorderActiveTabRight: () => reorderActiveTab(1),
+    splitVertical: () => setLayoutMode('split-vertical'),
+    splitHorizontal: () => setLayoutMode('split-horizontal'),
   })
 
   return (

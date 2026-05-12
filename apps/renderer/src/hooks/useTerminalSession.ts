@@ -111,6 +111,13 @@ function getOrCreateHandle(sessionId: string): TerminalHandle {
   return handle
 }
 
+export function focusSession(sessionId: string): void {
+  const handle = handles.get(sessionId)
+  if (!handle) return
+  handle.term.scrollToBottom()
+  handle.term.focus()
+}
+
 function readTerminalBuffer(sessionId: string): string | null {
   const handle = handles.get(sessionId)
   if (!handle) return null

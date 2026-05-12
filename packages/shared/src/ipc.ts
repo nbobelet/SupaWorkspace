@@ -95,6 +95,12 @@ export const SessionStateEvent = z.object({
 })
 export type SessionStateEvent = z.infer<typeof SessionStateEvent>
 
+export const SessionFocusEvent = z.object({
+  sessionId: z.string().uuid(),
+  workspaceId: z.string().uuid().optional(),
+})
+export type SessionFocusEvent = z.infer<typeof SessionFocusEvent>
+
 export const WorkspaceOpenResponse = z.object({
   workspace: Workspace.nullable(),
   wasExisting: z.boolean().optional(),
