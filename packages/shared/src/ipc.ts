@@ -5,6 +5,7 @@ import { PathGrant, Workspace } from './workspace'
 export const IpcChannel = {
   SessionSpawn: 'session:spawn',
   SessionWrite: 'session:write',
+  SessionSubmit: 'session:submit',
   SessionResize: 'session:resize',
   SessionKill: 'session:kill',
   SessionRename: 'session:rename',
@@ -35,8 +36,20 @@ export const IpcChannel = {
   CmdGuardGet: 'cmd-guard:get',
   CmdGuardSetRules: 'cmd-guard:set-rules',
   CmdGuardAppendAudit: 'cmd-guard:append-audit',
+  BugReportCreate: 'bug-report:create',
+  BugReportList: 'bug-report:list',
+  BugReportRevealDir: 'bug-report:reveal-dir',
 } as const
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel]
+
+export {
+  BugReportSeverity,
+  BugReportStatus,
+  BugReportCreateRequest,
+  BugReportCreateResponse,
+  BugReportSummary,
+  BugReportListResponse,
+} from './bugReport'
 
 export const SessionSpawnRequest = z.object({
   workspaceId: z.string().uuid(),
@@ -58,6 +71,12 @@ export const SessionWriteRequest = z.object({
   data: z.string(),
 })
 export type SessionWriteRequest = z.infer<typeof SessionWriteRequest>
+
+export const SessionSubmitRequest = z.object({
+  sessionId: z.string().uuid(),
+  data: z.string(),
+})
+export type SessionSubmitRequest = z.infer<typeof SessionSubmitRequest>
 
 export const SessionResizeRequest = z.object({
   sessionId: z.string().uuid(),

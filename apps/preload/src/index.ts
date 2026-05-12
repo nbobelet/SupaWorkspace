@@ -16,6 +16,7 @@ import type {
   SessionSpawnRequest,
   SessionSpawnResponse,
   SessionStateEvent,
+  SessionSubmitRequest,
   SessionWriteRequest,
   WorkspaceListResponse,
   WorkspaceOpenResponse,
@@ -32,6 +33,11 @@ import type {
   CmdGuardSetRulesRequest,
   CmdGuardAppendAuditRequest,
 } from '@shared/cmdGuard'
+import type {
+  BugReportCreateRequest,
+  BugReportCreateResponse,
+  BugReportListResponse,
+} from '@shared/bugReport'
 import { IpcChannel } from '@shared/ipc'
 import type { NotificationPushEvent } from '@shared/notification'
 import type { Workspace } from '@shared/workspace'
@@ -51,6 +57,7 @@ const api = {
     spawn: (req: SessionSpawnRequest): Promise<SessionSpawnResponse> =>
       ipcRenderer.invoke(IpcChannel.SessionSpawn, req),
     write: (req: SessionWriteRequest): Promise<void> => ipcRenderer.invoke(IpcChannel.SessionWrite, req),
+    submit: (req: SessionSubmitRequest): Promise<void> => ipcRenderer.invoke(IpcChannel.SessionSubmit, req),
     resize: (req: SessionResizeRequest): Promise<void> => ipcRenderer.invoke(IpcChannel.SessionResize, req),
     kill: (req: SessionKillRequest): Promise<void> => ipcRenderer.invoke(IpcChannel.SessionKill, req),
     rename: (req: SessionRenameRequest): Promise<SessionRenameResponse> =>
@@ -118,6 +125,12 @@ const api = {
       ipcRenderer.invoke(IpcChannel.CmdGuardSetRules, req),
     appendAudit: (req: CmdGuardAppendAuditRequest): Promise<CmdGuardGetResponse> =>
       ipcRenderer.invoke(IpcChannel.CmdGuardAppendAudit, req),
+  },
+  bugReport: {
+    create: (req: BugReportCreateRequest): Promise<BugReportCreateResponse> =>
+      ipcRenderer.invoke(IpcChannel.BugReportCreate, req),
+    list: (): Promise<BugReportListResponse> => ipcRenderer.invoke(IpcChannel.BugReportList),
+    revealDir: (): Promise<void> => ipcRenderer.invoke(IpcChannel.BugReportRevealDir),
   },
 }
 

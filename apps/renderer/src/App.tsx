@@ -9,6 +9,8 @@ import { SettingsPanel } from './components/settings/SettingsPanel'
 import { CommandPalette } from './components/CommandPalette'
 import { CommandInputBar } from './components/CommandInputBar'
 import { CmdGuardModal } from './components/CmdGuardModal'
+import { BugReportButton } from './components/BugReportButton'
+import { BugReportDialog } from './components/BugReportDialog'
 import { useScopedOrder, useSessionStore } from './state/sessionStore'
 import { useWorkspaceStore } from './state/workspaceStore'
 import { useLayoutStore } from './state/layoutStore'
@@ -282,6 +284,7 @@ export function App(): ReactElement {
             <SettingsIcon size={12} aria-hidden="true" />
             <span>Settings</span>
           </button>
+          <BugReportButton />
           <LayoutSwitcher />
         </header>
         <SessionTabs />
@@ -306,6 +309,7 @@ export function App(): ReactElement {
 
       <CommandPalette />
       <CmdGuardModal />
+      <BugReportDialog />
       <Toaster
         position="top-right"
         visibleToasts={3}

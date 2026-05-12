@@ -9,6 +9,7 @@ import { NotesStore } from './notes/NotesStore'
 import { InputHistoryStore } from './input-history/InputHistoryStore'
 import { SessionSnapshotStore } from './sessions-snapshot/SessionSnapshotStore'
 import { CmdGuardStore } from './cmd-guard/CmdGuardStore'
+import { BugReportStore } from './bug-report/BugReportStore'
 import { registerSessionIpc } from './ipc/session'
 import { registerWorkspaceIpc } from './ipc/workspace'
 import { registerPermissionsIpc } from './ipc/permissions'
@@ -16,11 +17,28 @@ import { registerNotesIpc } from './ipc/notes'
 import { registerInputHistoryIpc } from './ipc/inputHistory'
 import { registerSessionSnapshotIpc } from './ipc/sessionSnapshot'
 import { registerCmdGuardIpc } from './ipc/cmdGuard'
+import { registerBugReportIpc } from './ipc/bugReport'
 import { IpcChannel } from '@shared/ipc'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
+// Shared userData path between dev and packaged builds.
+// Bump SHARED_DATA_VERSION when a store schema becomes non-backward-compatible
+// so old versions keep reading their own dir as a rollback.
+// Respect --user-data-dir CLI flag (used by Playwright e2e to isolate state).
+const SHARED_DATA_VERSION = 'v1'
+const hasExplicitUserDataDir = process.argv.some(
+  (arg) => arg === '--user-data-dir' || arg.startsWith('--user-data-dir='),
+)
+if (!hasExplicitUserDataDir) {
+  const SHARED_USER_DATA = join(app.getPath('appData'), 'SupaWorkspace', SHARED_DATA_VERSION)
+  app.setPath('userData', SHARED_USER_DATA)
+}
+console.log(`[supa] userData = ${app.getPath('userData')}`)
+
 let mainWindow: BrowserWindow | null = null
+
+const APP_TITLE = `SupaWorkspace - ${app.isPackaged ? 'PROD' : 'DEV'}`
 
 function getMainWindow(): BrowserWindow | null {
   return mainWindow
@@ -38,6 +56,7 @@ function createWindow(): void {
     minWidth: 900,
     minHeight: 600,
     show: false,
+    title: APP_TITLE,
     backgroundColor: '#0a0a0a',
     autoHideMenuBar: true,
     webPreferences: {
@@ -52,6 +71,11 @@ function createWindow(): void {
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show()
   })
+
+  mainWindow.on('page-title-updated', (event) => {
+    event.preventDefault()
+  })
+  mainWindow.setTitle(APP_TITLE)
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url)
@@ -88,6 +112,13 @@ void app.whenReady().then(async () => {
   const inputHistoryStore = new InputHistoryStore()
   const snapshotStore = new SessionSnapshotStore()
   const cmdGuardStore = new CmdGuardStore()
+  const bugReportStore = new BugReportStore({
+    isPackaged: app.isPackaged,
+    appPath: app.getAppPath(),
+    appVersion: app.getVersion(),
+    userDataDir: app.getPath('userData'),
+    openPath: (p) => shell.openPath(p),
+  })
   const notifier = new Notifier(getMainWindow, workspaceStore)
   const sessionManager = new SessionManager({
     onData: (sessionId, data) => broadcast(IpcChannel.SessionData, { sessionId, data }),
@@ -118,6 +149,7 @@ void app.whenReady().then(async () => {
   registerInputHistoryIpc({ inputHistoryStore })
   registerSessionSnapshotIpc({ snapshotStore })
   registerCmdGuardIpc({ cmdGuardStore })
+  registerBugReportIpc({ bugReportStore })
 
   createWindow()
 
