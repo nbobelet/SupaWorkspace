@@ -1,11 +1,12 @@
 import type { SessionState } from '@shared/session'
 import { detectUserInputRequired } from '../notifications/detectUserInputRequired'
+import { detectIdlePrompt } from '../notifications/detectIdlePrompt'
 
 const RECENT_BUFFER_CAP = 4096
-const IDLE_AFTER_QUIESCENCE_MS = 500
+const IDLE_DEBOUNCE_MS = 400
 
 export interface StateDetectorEvents {
-  onStateChange: (sessionId: string, state: SessionState) => void
+  onStateChange: (sessionId: string, state: SessionState, exitCode?: number | null) => void
 }
 
 interface SessionTrack {
@@ -18,10 +19,7 @@ interface SessionTrack {
 export class StateDetector {
   private readonly tracks = new Map<string, SessionTrack>()
 
-  constructor(
-    private readonly events: StateDetectorEvents,
-    private readonly idleAfterMs: number = IDLE_AFTER_QUIESCENCE_MS,
-  ) {}
+  constructor(private readonly events: StateDetectorEvents) {}
 
   register(sessionId: string): void {
     this.tracks.set(sessionId, {
@@ -30,7 +28,7 @@ export class StateDetector {
       hasReceivedData: false,
       idleTimer: null,
     })
-    this.events.onStateChange(sessionId, 'idle')
+    this.events.onStateChange(sessionId, 'idle', null)
   }
 
   unregister(sessionId: string): void {
@@ -46,52 +44,53 @@ export class StateDetector {
     track.hasReceivedData = true
     track.buffer = (track.buffer + data).slice(-RECENT_BUFFER_CAP)
 
-    if (detectUserInputRequired(track.buffer)) {
-      this.cancelIdleTimer(track)
-      this.transition(sessionId, 'waiting-for-input')
-    } else {
-      this.transition(sessionId, 'running')
-      this.scheduleIdle(sessionId, track)
+    if (track.idleTimer) {
+      clearTimeout(track.idleTimer)
+      track.idleTimer = null
     }
+
+    if (detectUserInputRequired(track.buffer)) {
+      this.transition(sessionId, 'asking')
+      return
+    }
+
+    this.transition(sessionId, 'running')
+
+    track.idleTimer = setTimeout(() => {
+      const cur = this.tracks.get(sessionId)
+      if (!cur) return
+      cur.idleTimer = null
+      if (cur.state !== 'running') return
+      if (detectIdlePrompt(cur.buffer)) {
+        this.transition(sessionId, 'idle')
+      }
+    }, IDLE_DEBOUNCE_MS)
   }
 
   onInput(sessionId: string): void {
     const track = this.tracks.get(sessionId)
     if (!track) return
     track.buffer = ''
-    this.cancelIdleTimer(track)
+    if (track.idleTimer) {
+      clearTimeout(track.idleTimer)
+      track.idleTimer = null
+    }
     this.transition(sessionId, 'running')
-    this.scheduleIdle(sessionId, track)
   }
 
   onExit(sessionId: string, exitCode: number): void {
     const track = this.tracks.get(sessionId)
     if (!track) return
-    this.cancelIdleTimer(track)
-    this.transition(sessionId, exitCode === 0 ? 'finished' : 'error')
-  }
-
-  getState(sessionId: string): SessionState | undefined {
-    return this.tracks.get(sessionId)?.state
-  }
-
-  private scheduleIdle(sessionId: string, track: SessionTrack): void {
-    this.cancelIdleTimer(track)
-    track.idleTimer = setTimeout(() => {
-      const t = this.tracks.get(sessionId)
-      if (!t) return
-      t.idleTimer = null
-      if (t.state === 'running') {
-        this.transition(sessionId, 'idle')
-      }
-    }, this.idleAfterMs)
-  }
-
-  private cancelIdleTimer(track: SessionTrack): void {
     if (track.idleTimer) {
       clearTimeout(track.idleTimer)
       track.idleTimer = null
     }
+    track.state = 'ending'
+    this.events.onStateChange(sessionId, 'ending', exitCode)
+  }
+
+  getState(sessionId: string): SessionState | undefined {
+    return this.tracks.get(sessionId)?.state
   }
 
   private transition(sessionId: string, next: SessionState): void {

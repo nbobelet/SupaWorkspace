@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { tinykeys, type KeyBindingMap } from 'tinykeys'
+import { returnFocusToActiveSession } from '../lib/commandBarFocus'
 
 export interface KeybindingHandlers {
   cycleSessionNext: () => void
@@ -18,7 +19,22 @@ export interface KeybindingHandlers {
   reorderActiveTabRight: () => void
   splitVertical: () => void
   splitHorizontal: () => void
+  focusSessionCommandBar: () => void
+  focusWorkspaceCommandBar: () => void
+  toggleAppSettings: () => void
 }
+
+// Bar-toggle, palette, settings and rename handlers keep focus where they
+// sent it; every other navigation handler returns focus to the active xterm
+// after firing so typing is never stranded on a stale element.
+const FOCUS_EXEMPT: ReadonlySet<keyof KeybindingHandlers> = new Set<keyof KeybindingHandlers>([
+  'focusSessionCommandBar',
+  'focusWorkspaceCommandBar',
+  'togglePalette',
+  'toggleAppSettings',
+  'renameActiveTab',
+  'renameActiveWorkspace',
+])
 
 function isEditableTarget(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false
@@ -29,35 +45,50 @@ function isEditableTarget(el: EventTarget | null): boolean {
   return false
 }
 
-function guard(handler: () => void): (event: KeyboardEvent) => void {
+function guardWithFocusRestore(
+  name: keyof KeybindingHandlers,
+  handler: () => void,
+): (event: KeyboardEvent) => void {
+  const restoreFocus = !FOCUS_EXEMPT.has(name)
   return (event) => {
     if (isEditableTarget(event.target)) return
     event.preventDefault()
     handler()
+    if (restoreFocus) returnFocusToActiveSession()
   }
 }
 
 export function useKeybindings(handlers: KeybindingHandlers): void {
   useEffect(() => {
     const bindings: KeyBindingMap = {
-      '$mod+Tab': guard(handlers.cycleSessionNext),
-      '$mod+Shift+Tab': guard(handlers.cycleSessionPrev),
-      '$mod+t': guard(handlers.spawnLastUsed),
-      '$mod+w': guard(handlers.killActive),
-      '$mod+Shift+]': guard(handlers.cycleWorkspaceNext),
-      '$mod+Shift+[': guard(handlers.cycleWorkspacePrev),
-      '$mod+r': guard(handlers.renameActiveTab),
-      F2: guard(handlers.renameActiveWorkspace),
-      '$mod+k': guard(handlers.togglePalette),
-      '$mod+/': guard(handlers.toggleInputBar),
-      '$mod+\\': guard(handlers.cycleLayout),
-      '$mod+Shift+ArrowLeft': guard(handlers.reorderActiveTabLeft),
-      '$mod+Shift+ArrowRight': guard(handlers.reorderActiveTabRight),
-      '$mod+Shift+\\': guard(handlers.splitVertical),
-      '$mod+Shift+-': guard(handlers.splitHorizontal),
+      '$mod+Tab': guardWithFocusRestore('cycleSessionNext', handlers.cycleSessionNext),
+      '$mod+Shift+Tab': guardWithFocusRestore('cycleSessionPrev', handlers.cycleSessionPrev),
+      '$mod+t': guardWithFocusRestore('spawnLastUsed', handlers.spawnLastUsed),
+      '$mod+w': guardWithFocusRestore('killActive', handlers.killActive),
+      '$mod+Shift+]': guardWithFocusRestore('cycleWorkspaceNext', handlers.cycleWorkspaceNext),
+      '$mod+Shift+[': guardWithFocusRestore('cycleWorkspacePrev', handlers.cycleWorkspacePrev),
+      '$mod+r': guardWithFocusRestore('renameActiveTab', handlers.renameActiveTab),
+      F2: guardWithFocusRestore('renameActiveWorkspace', handlers.renameActiveWorkspace),
+      '$mod+k': guardWithFocusRestore('togglePalette', handlers.togglePalette),
+      '$mod+/': guardWithFocusRestore('toggleInputBar', handlers.toggleInputBar),
+      '$mod+\\': guardWithFocusRestore('cycleLayout', handlers.cycleLayout),
+      '$mod+Shift+ArrowLeft': guardWithFocusRestore(
+        'reorderActiveTabLeft',
+        handlers.reorderActiveTabLeft,
+      ),
+      '$mod+Shift+ArrowRight': guardWithFocusRestore(
+        'reorderActiveTabRight',
+        handlers.reorderActiveTabRight,
+      ),
+      '$mod+Shift+\\': guardWithFocusRestore('splitVertical', handlers.splitVertical),
+      '$mod+Shift+-': guardWithFocusRestore('splitHorizontal', handlers.splitHorizontal),
+      '$mod+i': guardWithFocusRestore('focusSessionCommandBar', handlers.focusSessionCommandBar),
+      '$mod+,': guardWithFocusRestore('toggleAppSettings', handlers.toggleAppSettings),
     }
     for (let n = 1; n <= 9; n += 1) {
-      bindings[`$mod+Digit${n}`] = guard(() => handlers.jumpToSession(n - 1))
+      bindings[`$mod+Digit${n}`] = guardWithFocusRestore('jumpToSession', () =>
+        handlers.jumpToSession(n - 1),
+      )
     }
     return tinykeys(window, bindings)
   }, [handlers])

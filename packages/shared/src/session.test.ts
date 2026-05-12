@@ -14,9 +14,15 @@ describe('SessionType', () => {
 
 describe('SessionState', () => {
   it('accepts every valid state', () => {
-    for (const state of ['idle', 'running', 'waiting-for-input', 'finished', 'error'] as const) {
+    for (const state of ['idle', 'running', 'asking', 'ending'] as const) {
       expect(SessionState.parse(state)).toBe(state)
     }
+  })
+
+  it('rejects retired states', () => {
+    expect(() => SessionState.parse('waiting-for-input')).toThrow()
+    expect(() => SessionState.parse('finished')).toThrow()
+    expect(() => SessionState.parse('error')).toThrow()
   })
 })
 

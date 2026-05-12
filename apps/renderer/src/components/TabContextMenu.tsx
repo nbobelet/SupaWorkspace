@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from 'react'
-import { ArrowLeftRight, ArrowUpDown, Copy, Edit2, X } from 'lucide-react'
+import { ArrowLeftRight, ArrowUpDown, Copy, Edit2, X, XSquare } from 'lucide-react'
 import { clampMenuPosition, VIEWPORT_MARGIN } from '../lib/menuPosition'
 
-export type TabAction = 'split-h' | 'split-v' | 'rename' | 'duplicate' | 'close'
+export type TabAction = 'split-h' | 'split-v' | 'rename' | 'duplicate' | 'close' | 'close-all-ws'
 
 interface TabContextMenuProps {
   sessionId: string
@@ -49,6 +49,12 @@ const ACTIONS: ActionDef[] = [
     label: 'Close',
     icon: <X size={12} aria-hidden="true" />,
     shortcut: 'Ctrl+W',
+    danger: true,
+  },
+  {
+    action: 'close-all-ws',
+    label: 'Close all in workspace',
+    icon: <XSquare size={12} aria-hidden="true" />,
     danger: true,
   },
 ]

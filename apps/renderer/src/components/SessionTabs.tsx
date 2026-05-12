@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
 import { Terminal, Sparkles } from 'lucide-react'
 import {
   DndContext,
@@ -20,11 +20,12 @@ import { useScopedOrder, useSessionStore, useHighestPriorityTabId } from '../sta
 import { useWorkspaceStore } from '../state/workspaceStore'
 import { useLayoutStore } from '../state/layoutStore'
 import { useInlineRename } from '../hooks/useInlineRename'
-import { focusSession } from '../hooks/useTerminalSession'
-import { addSessionWithFocus } from '../lib/sessionFocus'
+import { addSessionWithFocus, activateSession } from '../lib/sessionFocus'
+import { closeSession } from '../lib/closeSession'
 import { getSessionStatus } from '../state/sessionStatus'
 import { StatusIcon } from './StatusIcon'
 import { TabContextMenu, type TabAction } from './TabContextMenu'
+import { scrollTabIntoView } from '../lib/scrollIntoViewX'
 import type { SessionType } from '@shared/session'
 
 function truncateMiddle(text: string, maxLen = 40): string {
@@ -42,7 +43,6 @@ interface ContextMenuState {
 export function SessionTabs(): ReactElement {
   const sessions = useSessionStore((s) => s.sessions)
   const activeId = useSessionStore((s) => s.activeId)
-  const setActive = useSessionStore((s) => s.setActive)
   const renameSession = useSessionStore((s) => s.renameSession)
   const lastUsedType = useSessionStore((s) => s.lastUsedType)
   const reorderScopedTab = useSessionStore((s) => s.reorderScopedTab)
@@ -54,6 +54,18 @@ export function SessionTabs(): ReactElement {
   const setLayoutMode = useLayoutStore((s) => s.setMode)
 
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
+  const stripRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const strip = stripRef.current
+    if (!strip) return
+    if (activeId) scrollTabIntoView(strip, activeId)
+    if (mostUrgentId && mostUrgentId !== activeId) {
+      const raf = requestAnimationFrame(() => scrollTabIntoView(strip, mostUrgentId))
+      return () => cancelAnimationFrame(raf)
+    }
+    return undefined
+  }, [activeId, mostUrgentId, scopedOrder])
 
   const rename = useInlineRename(async (id, newLabel) => {
     const existing = sessions[id]
@@ -102,7 +114,6 @@ export function SessionTabs(): ReactElement {
         type,
         label: res.label,
         state: 'idle',
-        hasUnseenWaiting: false,
       })
     },
     [activeWorkspaceId],
@@ -140,12 +151,12 @@ export function SessionTabs(): ReactElement {
       if (!target) return
       switch (action) {
         case 'split-h':
-          setActive(sessionId)
-          setLayoutMode('split-horizontal')
+          await activateSession(sessionId)
+          if (activeWorkspaceId) setLayoutMode(activeWorkspaceId, 'split-horizontal')
           return
         case 'split-v':
-          setActive(sessionId)
-          setLayoutMode('split-vertical')
+          await activateSession(sessionId)
+          if (activeWorkspaceId) setLayoutMode(activeWorkspaceId, 'split-vertical')
           return
         case 'rename':
           startRename(sessionId)
@@ -165,18 +176,22 @@ export function SessionTabs(): ReactElement {
               type: target.type,
               label: res.label,
               state: 'idle',
-              hasUnseenWaiting: false,
             })
           } catch (err) {
             console.error('[session] duplicate failed', err)
           }
           return
         case 'close':
-          void window.ws.session.kill({ sessionId })
+          closeSession(sessionId)
+          return
+        case 'close-all-ws':
+          for (const id of scopedOrder) {
+            closeSession(id)
+          }
           return
       }
     },
-    [sessions, activeWorkspaceId, setActive, setLayoutMode, startRename],
+    [sessions, activeWorkspaceId, setLayoutMode, startRename, scopedOrder],
   )
 
   const wsHue = activeWorkspace?.color?.hue
@@ -205,7 +220,10 @@ export function SessionTabs(): ReactElement {
         onDragEnd={handleDragEnd}
       >
         <SortableContext items={scopedOrder} strategy={horizontalListSortingStrategy}>
-          <div className="flex min-w-0 flex-1 items-center gap-1">
+          <div
+            ref={stripRef}
+            className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto scroll-smooth [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-fg/15 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-fg/30 [&::-webkit-scrollbar-thumb]:transition-colors motion-reduce:[&::-webkit-scrollbar-thumb]:transition-none"
+          >
             {scopedOrder.map((id) => {
               const s = sessions[id]
               if (!s) return null
@@ -215,6 +233,7 @@ export function SessionTabs(): ReactElement {
                   id={id}
                   label={s.label}
                   status={getSessionStatus(s.state)}
+                  badgeCount={s.badgeCount}
                   isActive={id === activeId}
                   isMostUrgent={id === mostUrgentId}
                   isRenaming={rename.isRenaming(id)}
@@ -223,11 +242,10 @@ export function SessionTabs(): ReactElement {
                   onRenameCommit={() => void rename.commitRename(id)}
                   onRenameCancel={rename.cancelRename}
                   onActivate={() => {
-                    setActive(id)
-                    requestAnimationFrame(() => focusSession(id))
+                    void activateSession(id)
                   }}
                   onStartRename={() => startRename(id)}
-                  onClose={() => void window.ws.session.kill({ sessionId: id })}
+                  onClose={() => closeSession(id)}
                   onContextMenu={(e) => handleContextMenu(e, id)}
                 />
               )
@@ -287,6 +305,7 @@ interface SortableTabProps {
   id: string
   label: string
   status: ReturnType<typeof getSessionStatus>
+  badgeCount: number
   isActive: boolean
   isMostUrgent: boolean
   isRenaming: boolean
@@ -304,6 +323,7 @@ function SortableTab({
   id,
   label,
   status,
+  badgeCount,
   isActive,
   isMostUrgent,
   isRenaming,
@@ -369,6 +389,14 @@ function SortableTab({
         aria-label={`${label} session, ${status}${isMostUrgent ? ', most urgent' : ''}`}
       >
         <StatusIcon status={status} size={12} />
+        {badgeCount > 0 && (
+          <span
+            className="rounded-full bg-accent px-1 text-[10px] font-mono leading-tight text-white"
+            aria-label={`${badgeCount} unread notification${badgeCount === 1 ? '' : 's'}`}
+          >
+            {badgeCount > 9 ? '9+' : badgeCount}
+          </span>
+        )}
         {isRenaming ? (
           <input
             autoFocus

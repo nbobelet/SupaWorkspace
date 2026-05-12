@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { matchCmdGuardRule } from '../lib/cmdGuard'
 import { useCmdGuardStore } from './cmdGuardStore'
 
-interface InputBarState {
+interface SessionCommandBarState {
   value: string
   history: string[]
   historyIndex: number | null
@@ -19,7 +19,7 @@ interface InputBarState {
   historyNext: () => void
 }
 
-export const useInputBarStore = create<InputBarState>((set, get) => ({
+export const useSessionCommandBarStore = create<SessionCommandBarState>((set, get) => ({
   value: '',
   history: [],
   historyIndex: null,
@@ -49,7 +49,7 @@ export const useInputBarStore = create<InputBarState>((set, get) => ({
       const granted = await useCmdGuardStore.getState().request(value, matched)
       if (!granted) return
     }
-    await window.ws.session.write({ sessionId, data: `${value}\r` })
+    await window.ws.session.submit({ sessionId, data: value })
     const res = await window.ws.inputHistory.append({ entry: value })
     set({ value: '', history: res.entries, historyIndex: null })
   },

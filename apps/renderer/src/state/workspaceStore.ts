@@ -8,6 +8,7 @@ interface WorkspaceStoreState {
   setWorkspaces: (workspaces: Workspace[]) => void
   upsertWorkspace: (workspace: Workspace) => void
   removeWorkspace: (id: string) => void
+  reorderWorkspaces: (fromIndex: number, toIndex: number) => void
   setActiveWorkspace: (id: string | null) => void
   setColor: (id: string, hue: number) => Promise<void>
   getActiveWorkspace: () => Workspace | null
@@ -44,6 +45,18 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
       const activeWorkspaceId =
         prev.activeWorkspaceId === id ? (workspaces[0]?.id ?? null) : prev.activeWorkspaceId
       return { workspaces, activeWorkspaceId }
+    }),
+
+  reorderWorkspaces: (fromIndex, toIndex) =>
+    set((prev) => {
+      if (fromIndex === toIndex) return prev
+      if (fromIndex < 0 || toIndex < 0) return prev
+      if (fromIndex >= prev.workspaces.length || toIndex >= prev.workspaces.length) return prev
+      const next = [...prev.workspaces]
+      const [moved] = next.splice(fromIndex, 1)
+      if (!moved) return prev
+      next.splice(toIndex, 0, moved)
+      return { workspaces: next }
     }),
 
   setActiveWorkspace: (id) => set({ activeWorkspaceId: id }),

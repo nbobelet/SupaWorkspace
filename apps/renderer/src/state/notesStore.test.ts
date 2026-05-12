@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useNotesStore } from './notesStore'
-import { useWorkspaceStore } from './workspaceStore'
 
 describe('notesStore', () => {
-  const setMock = vi.fn(async (_content: string) => undefined)
-  const getMock = vi.fn(async () => ({ content: 'hello from disk' }))
+  const setMock = vi.fn(async (_workspaceId: string, _content: string) => undefined)
+  const getMock = vi.fn(async (workspaceId: string) => ({
+    content: workspaceId === 'ws-A' ? 'notes for A' : workspaceId === 'ws-B' ? 'notes for B' : '',
+  }))
 
   beforeEach(() => {
     setMock.mockClear()
@@ -12,39 +13,40 @@ describe('notesStore', () => {
     ;(globalThis as { window?: unknown }).window = {
       ws: { notes: { get: getMock, set: setMock } },
     }
-    useNotesStore.setState({ content: '', loaded: false })
+    useNotesStore.setState({ byWorkspace: {}, loadedFor: {} })
   })
 
   afterEach(() => {
     vi.useRealTimers()
   })
 
-  it('loads content from disk once', async () => {
-    await useNotesStore.getState().load()
-    expect(useNotesStore.getState().content).toBe('hello from disk')
-    expect(useNotesStore.getState().loaded).toBe(true)
+  it('loads content per workspace and caches the result', async () => {
+    await useNotesStore.getState().load('ws-A')
+    expect(useNotesStore.getState().byWorkspace['ws-A']).toBe('notes for A')
     expect(getMock).toHaveBeenCalledTimes(1)
 
-    await useNotesStore.getState().load()
+    await useNotesStore.getState().load('ws-A')
     expect(getMock).toHaveBeenCalledTimes(1)
   })
 
-  it('persists notes globally — content survives workspace switching', async () => {
-    await useNotesStore.getState().load()
-    useNotesStore.getState().setContent('user typed something')
-    expect(useNotesStore.getState().content).toBe('user typed something')
+  it('isolates notes per workspace — content does not bleed across workspaces', async () => {
+    await useNotesStore.getState().load('ws-A')
+    await useNotesStore.getState().load('ws-B')
 
-    useWorkspaceStore.setState({ activeWorkspaceId: 'ws-A' })
-    expect(useNotesStore.getState().content).toBe('user typed something')
+    useNotesStore.getState().setContent('ws-A', 'edited in A')
+    expect(useNotesStore.getState().byWorkspace['ws-A']).toBe('edited in A')
+    expect(useNotesStore.getState().byWorkspace['ws-B']).toBe('notes for B')
 
-    useWorkspaceStore.setState({ activeWorkspaceId: 'ws-B' })
-    expect(useNotesStore.getState().content).toBe('user typed something')
+    useNotesStore.getState().setContent('ws-B', 'edited in B')
+    expect(useNotesStore.getState().byWorkspace['ws-A']).toBe('edited in A')
+    expect(useNotesStore.getState().byWorkspace['ws-B']).toBe('edited in B')
   })
 
-  it('flush writes pending content synchronously', async () => {
-    await useNotesStore.getState().load()
-    useNotesStore.getState().setContent('draft')
-    await useNotesStore.getState().flush()
-    expect(setMock).toHaveBeenCalledWith('draft')
+  it('flush writes pending content for the target workspace only', async () => {
+    await useNotesStore.getState().load('ws-A')
+    useNotesStore.getState().setContent('ws-A', 'draft A')
+    await useNotesStore.getState().flush('ws-A')
+    expect(setMock).toHaveBeenCalledWith('ws-A', 'draft A')
+    expect(setMock).toHaveBeenCalledTimes(1)
   })
 })

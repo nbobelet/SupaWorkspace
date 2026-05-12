@@ -138,6 +138,24 @@ Grants are revocable from Settings → Permissions. Persistence lives in `electr
 
 The `claude` CLI's own per-tool permissions (`Bash(pnpm:*)`, `Read(./**)`, etc.) live in `<rootPath>/.claude/settings.json` and are edited through Settings → Permissions. Those are enforced by the `claude` CLI itself at tool-call time — the host app only writes the file.
 
+## Documentation
+
+The `docs/` tree is organised by [Diátaxis](https://diataxis.fr) quadrant:
+
+| Quadrant     | Page                                                                              |
+| ------------ | --------------------------------------------------------------------------------- |
+| Tutorial     | [docs/getting-started.md](docs/getting-started.md) — 10-min walkthrough for first launch |
+| How-to       | [docs/how-to-manage-workspaces.md](docs/how-to-manage-workspaces.md) — create / rename / recolor / delete |
+| How-to       | [docs/how-to/configure-claude-settings.md](docs/how-to/configure-claude-settings.md) — per-workspace `.claude/settings.json` |
+| How-to       | [docs/how-to/grant-out-of-scope-path.md](docs/how-to/grant-out-of-scope-path.md) — `PathGrant` lifecycle |
+| Reference    | [docs/keyboard-shortcuts.md](docs/keyboard-shortcuts.md) — full key table         |
+| Explanation  | [docs/concepts.md](docs/concepts.md) — `Workspace`, `Session`, `Type` definitions |
+| Explanation  | [docs/architecture/ipc.md](docs/architecture/ipc.md) — Zod-at-the-boundary IPC pattern |
+| Explanation  | [docs/architecture/notifications.md](docs/architecture/notifications.md) — dual-channel fan-out |
+| Explanation  | [docs/architecture/pty.md](docs/architecture/pty.md) — PTY backend trade-offs     |
+
+New users should start with [docs/getting-started.md](docs/getting-started.md).
+
 ## Code signing
 
 Not configured. TODO before public distribution:

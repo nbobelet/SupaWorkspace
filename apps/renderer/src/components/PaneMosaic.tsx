@@ -4,8 +4,8 @@ import 'react-mosaic-component/react-mosaic-component.css'
 import { TerminalPane } from './TerminalPane'
 import { useScopedOrder, useSessionStore } from '../state/sessionStore'
 import { useWorkspaceStore } from '../state/workspaceStore'
-import { useLayoutStore } from '../state/layoutStore'
-import { focusSession } from '../hooks/useTerminalSession'
+import { useActiveLayoutMode } from '../state/layoutStore'
+import { activateSession } from '../lib/sessionFocus'
 import { CascadeLayout } from './CascadeLayout'
 import { WelcomePane } from './WelcomePane'
 import { EmptyWorkspaceState } from './EmptyWorkspaceState'
@@ -55,24 +55,23 @@ export function PaneMosaic(): ReactElement {
   const sessions = useSessionStore((s) => s.sessions)
   const order = useSessionStore((s) => s.order)
   const activeId = useSessionStore((s) => s.activeId)
-  const setActive = useSessionStore((s) => s.setActive)
-  const mode = useLayoutStore((s) => s.mode)
+  const mode = useActiveLayoutMode()
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const scopedOrder = useScopedOrder()
 
   const computedNode = useMemo(() => {
     switch (mode) {
       case 'single':
-        return buildSingleNode(order, activeId)
+        return buildSingleNode(scopedOrder, activeId)
       case 'split-horizontal':
-        return buildSplitNode(order.slice(0, 2), 'row')
+        return buildSplitNode(scopedOrder.slice(0, 2), 'row')
       case 'split-vertical':
-        return buildSplitNode(order.slice(0, 2), 'column')
+        return buildSplitNode(scopedOrder.slice(0, 2), 'column')
       case 'grid':
       default:
-        return buildGridNode(order)
+        return buildGridNode(scopedOrder)
     }
-  }, [mode, order, activeId])
+  }, [mode, scopedOrder, activeId])
 
   const [node, setNode] = useState<MosaicNode<string> | null>(computedNode)
 
@@ -98,8 +97,7 @@ export function PaneMosaic(): ReactElement {
     return (
       <div className="h-full w-full p-2">
         <TerminalPane sessionId={id} isActive={id === activeId} onFocus={() => {
-                setActive(id)
-                requestAnimationFrame(() => focusSession(id))
+                void activateSession(id)
               }} />
       </div>
     )
@@ -120,8 +118,7 @@ export function PaneMosaic(): ReactElement {
               toolbarControls={[]}
             >
               <TerminalPane sessionId={id} isActive={id === activeId} onFocus={() => {
-                setActive(id)
-                requestAnimationFrame(() => focusSession(id))
+                void activateSession(id)
               }} />
             </MosaicWindow>
           )

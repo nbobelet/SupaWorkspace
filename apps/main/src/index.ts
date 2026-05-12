@@ -126,9 +126,9 @@ void app.whenReady().then(async () => {
       broadcast(IpcChannel.SessionExit, { sessionId, exitCode, signal })
       notifier.unregisterSession(sessionId)
     },
-    onState: (sessionId, state) => {
-      broadcast(IpcChannel.SessionState, { sessionId, state })
-      notifier.handleStateChange(sessionId, state)
+    onState: (sessionId, state, exitCode) => {
+      broadcast(IpcChannel.SessionState, { sessionId, state, exitCode: exitCode ?? null })
+      notifier.handleStateChange(sessionId, state, exitCode)
     },
     onSessionsChanged: (configs) => {
       snapshotStore.save(

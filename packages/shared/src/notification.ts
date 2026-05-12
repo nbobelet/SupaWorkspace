@@ -5,6 +5,7 @@ export const NotificationKind = z.enum([
   'user-input-required',
   'permission-prompt',
   'error',
+  'task-completed',
 ])
 export type NotificationKind = z.infer<typeof NotificationKind>
 

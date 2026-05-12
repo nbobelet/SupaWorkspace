@@ -2,12 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { getSessionStatus, getStatusPriority, isUrgent } from './sessionStatus'
 
 describe('getSessionStatus', () => {
-  it('maps error to error', () => {
-    expect(getSessionStatus('error')).toBe('error')
-  })
-
-  it('maps waiting-for-input to waiting', () => {
-    expect(getSessionStatus('waiting-for-input')).toBe('waiting')
+  it('maps asking to waiting', () => {
+    expect(getSessionStatus('asking')).toBe('waiting')
   })
 
   it('maps running to running', () => {
@@ -18,8 +14,18 @@ describe('getSessionStatus', () => {
     expect(getSessionStatus('idle')).toBe('idle')
   })
 
-  it('collapses finished into idle', () => {
-    expect(getSessionStatus('finished')).toBe('idle')
+  it('maps ending with exitCode 0 to idle', () => {
+    expect(getSessionStatus('ending', 0)).toBe('idle')
+  })
+
+  it('maps ending with non-zero exitCode to error', () => {
+    expect(getSessionStatus('ending', 1)).toBe('error')
+    expect(getSessionStatus('ending', 130)).toBe('error')
+  })
+
+  it('maps ending without exitCode to idle (no signal to colour error)', () => {
+    expect(getSessionStatus('ending')).toBe('idle')
+    expect(getSessionStatus('ending', null)).toBe('idle')
   })
 })
 

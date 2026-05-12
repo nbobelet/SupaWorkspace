@@ -1,5 +1,6 @@
 import { type ReactElement } from 'react'
-import { useLayoutStore, type LayoutMode } from '../state/layoutStore'
+import { useLayoutStore, useActiveLayoutMode, type LayoutMode } from '../state/layoutStore'
+import { useWorkspaceStore } from '../state/workspaceStore'
 
 const LABELS: Record<LayoutMode, string> = {
   single: 'Single',
@@ -18,9 +19,10 @@ const ICONS: Record<LayoutMode, string> = {
 }
 
 export function LayoutSwitcher(): ReactElement {
-  const mode = useLayoutStore((s) => s.mode)
+  const mode = useActiveLayoutMode()
   const setMode = useLayoutStore((s) => s.setMode)
   const modes = useLayoutStore((s) => s.availableModes())
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
 
   return (
     <div role="toolbar" aria-label="Layout switcher" className="flex items-center gap-1">
@@ -30,7 +32,8 @@ export function LayoutSwitcher(): ReactElement {
           <button
             key={m}
             type="button"
-            onClick={() => setMode(m)}
+            onClick={() => activeWorkspaceId && setMode(activeWorkspaceId, m)}
+            disabled={!activeWorkspaceId}
             aria-pressed={active}
             aria-label={`Switch to ${LABELS[m]} layout`}
             title={LABELS[m]}
@@ -39,6 +42,7 @@ export function LayoutSwitcher(): ReactElement {
               active
                 ? 'border-accent bg-accent/10 text-accent'
                 : 'border-border bg-bg-elevated text-fg-subtle hover:border-border-strong',
+              'disabled:cursor-not-allowed disabled:opacity-50',
             ].join(' ')}
           >
             <span aria-hidden="true" className={m === 'split-vertical' ? 'inline-block rotate-90' : ''}>

@@ -1,17 +1,34 @@
-import { useEffect, useRef, type KeyboardEvent, type ReactElement } from 'react'
-import { useInputBarStore } from '../state/inputBarStore'
+import {
+  useEffect,
+  useRef,
+  type ClipboardEvent,
+  type KeyboardEvent,
+  type ReactElement,
+} from 'react'
+import { useSessionCommandBarStore } from '../state/sessionCommandBarStore'
 import { useSessionStore } from '../state/sessionStore'
-import { focusSession } from '../hooks/useTerminalSession'
+import { returnFocusToActiveSession } from '../lib/commandBarFocus'
 
-export function CommandInputBar(): ReactElement | null {
-  const value = useInputBarStore((s) => s.value)
-  const visible = useInputBarStore((s) => s.visible)
-  const setValue = useInputBarStore((s) => s.setValue)
-  const clear = useInputBarStore((s) => s.clear)
-  const submit = useInputBarStore((s) => s.submit)
-  const historyPrev = useInputBarStore((s) => s.historyPrev)
-  const historyNext = useInputBarStore((s) => s.historyNext)
-  const load = useInputBarStore((s) => s.load)
+const PASTE_GUARD_MS = 50
+
+// Session-scoped command bar — sends text to the ACTIVE xterm session.
+//
+// Focus discipline:
+// - Bar NEVER auto-focuses on mount or visibility change. The xterm-always
+//   invariant means typing falls through to the active terminal by default.
+// - Bar only receives focus when the user explicitly asks for it via the
+//   `session-command-bar:focus-request` channel (bound to $mod+i).
+// - On submit OR Escape, focus returns to the active xterm via
+//   `returnFocusToActiveSession()`. Never falls back to document.body.
+export function SessionCommandBar(): ReactElement | null {
+  const value = useSessionCommandBarStore((s) => s.value)
+  const visible = useSessionCommandBarStore((s) => s.visible)
+  const setValue = useSessionCommandBarStore((s) => s.setValue)
+  const clear = useSessionCommandBarStore((s) => s.clear)
+  const submit = useSessionCommandBarStore((s) => s.submit)
+  const historyPrev = useSessionCommandBarStore((s) => s.historyPrev)
+  const historyNext = useSessionCommandBarStore((s) => s.historyNext)
+  const load = useSessionCommandBarStore((s) => s.load)
 
   const activeId = useSessionStore((s) => s.activeId)
   const activeLabel = useSessionStore((s) =>
@@ -19,10 +36,20 @@ export function CommandInputBar(): ReactElement | null {
   )
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const lastPasteAtRef = useRef<number>(0)
 
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    const handler = (): void => {
+      const el = textareaRef.current
+      if (el) requestAnimationFrame(() => el.focus())
+    }
+    window.addEventListener('session-command-bar:focus-request', handler)
+    return () => window.removeEventListener('session-command-bar:focus-request', handler)
+  }, [visible])
 
   useEffect(() => {
     const el = textareaRef.current
@@ -39,16 +66,31 @@ export function CommandInputBar(): ReactElement | null {
     ? `Send to ${activeLabel ?? activeId.slice(0, 8)} — Enter to submit, Shift+Enter for newline`
     : 'No active session — focus a tab first'
 
+  const onPaste = (_e: ClipboardEvent<HTMLTextAreaElement>): void => {
+    lastPasteAtRef.current = Date.now()
+  }
+
+  const handleSubmit = async (): Promise<void> => {
+    if (!activeId) return
+    await submit(activeId)
+    returnFocusToActiveSession()
+  }
+
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (e.nativeEvent.isComposing) return
     if (e.key === 'Enter' && !e.shiftKey) {
+      if (Date.now() - lastPasteAtRef.current < PASTE_GUARD_MS) {
+        e.preventDefault()
+        return
+      }
       e.preventDefault()
-      if (activeId) void submit(activeId)
+      void handleSubmit()
       return
     }
     if (e.key === 'Escape') {
       e.preventDefault()
       e.currentTarget.blur()
-      if (activeId) focusSession(activeId)
+      returnFocusToActiveSession()
       return
     }
     if ((e.key === 'l' || e.key === 'L') && (e.metaKey || e.ctrlKey)) {
@@ -79,7 +121,10 @@ export function CommandInputBar(): ReactElement | null {
         'flex items-end gap-2 border-t border-border bg-bg-sunken px-3 py-2',
         'focus-within:border-accent',
       ].join(' ')}
-      data-testid="command-input-bar"
+      data-testid="session-command-bar"
+      data-region="session"
+      role="region"
+      aria-label="Active session input"
     >
       <span
         className="shrink-0 select-none font-mono text-xs text-fg-subtle"
@@ -92,6 +137,7 @@ export function CommandInputBar(): ReactElement | null {
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={onKeyDown}
+        onPaste={onPaste}
         disabled={disabled}
         placeholder={placeholder}
         rows={1}
@@ -105,11 +151,11 @@ export function CommandInputBar(): ReactElement | null {
           'focus:border-accent focus:ring-1 focus:ring-accent/40',
           'disabled:cursor-not-allowed disabled:opacity-50',
         ].join(' ')}
-        aria-label="Command input bar — sends to active terminal"
+        aria-label="Session command input — sends to active terminal"
       />
       <button
         type="button"
-        onClick={() => activeId && void submit(activeId)}
+        onClick={() => void handleSubmit()}
         disabled={disabled || value.length === 0}
         className={[
           'h-9 shrink-0 rounded-sm border border-accent bg-accent/10 px-3 text-xs font-medium text-accent',

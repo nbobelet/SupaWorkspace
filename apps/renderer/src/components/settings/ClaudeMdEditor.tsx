@@ -17,7 +17,7 @@ export function ClaudeMdEditor({ workspaceId }: ClaudeMdEditorProps): ReactEleme
 
   const sessions = useSessionStore((s) => s.sessions)
   const runningClaudeSessions = Object.values(sessions).filter(
-    (s) => s.workspaceId === workspaceId && s.type === 'claude' && s.state !== 'finished' && s.state !== 'error',
+    (s) => s.workspaceId === workspaceId && s.type === 'claude' && s.state !== 'ending',
   )
 
   useEffect(() => {

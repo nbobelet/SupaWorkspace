@@ -1,6 +1,49 @@
 import { useSessionStore, type RendererSession } from '../state/sessionStore'
 import { focusSession } from '../hooks/useTerminalSession'
 
+const pendingSpawns = new Set<string>()
+
+/**
+ * Activate a session by id. If the session is a snapshot placeholder
+ * (`pendingSpawn = true`), spawn the PTY lazily, swap the placeholder id
+ * for the real session id, then make it active. Real sessions are simply
+ * set active and re-focused.
+ */
+export async function activateSession(id: string): Promise<void> {
+  const store = useSessionStore.getState()
+  const session = store.sessions[id]
+  if (!session) return
+
+  if (!session.pendingSpawn) {
+    store.setActive(id)
+    requestAnimationFrame(() => focusSession(id))
+    return
+  }
+
+  if (pendingSpawns.has(id)) {
+    store.setActive(id)
+    return
+  }
+  pendingSpawns.add(id)
+  // Show the placeholder as active immediately so the UI reflects the click.
+  store.setActive(id)
+  try {
+    const res = await window.ws.session.spawn({
+      workspaceId: session.workspaceId,
+      type: session.type,
+      cols: 80,
+      rows: 24,
+      label: session.label,
+    })
+    useSessionStore.getState().materializeSession(id, res.sessionId, res.label)
+    requestAnimationFrame(() => focusSession(res.sessionId))
+  } catch (err) {
+    console.error('[session] lazy spawn failed', err)
+  } finally {
+    pendingSpawns.delete(id)
+  }
+}
+
 /**
  * Spawn-focus invariant. Every user-initiated spawn path must call this helper
  * instead of `useSessionStore.addSession` directly:
@@ -15,7 +58,14 @@ import { focusSession } from '../hooks/useTerminalSession'
  * Snapshot restore on app boot must NOT use this helper — it would steal focus
  * mid-restore and animate scroll for every restored tab.
  */
-export function addSessionWithFocus(session: RendererSession): void {
+export function addSessionWithFocus(
+  session: Omit<RendererSession, 'badgeCount' | 'exitCode' | 'hasUnseenAsking' | 'hasUnseenEnding'> & {
+    badgeCount?: number
+    exitCode?: number | null
+    hasUnseenAsking?: boolean
+    hasUnseenEnding?: boolean
+  },
+): void {
   const store = useSessionStore.getState()
   store.addSession(session)
   // `addSession` only sets active when no session is active yet — force it.

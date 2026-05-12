@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + [Conventional
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-12
+
 ### Fixed
 
 - fix(renderer): right-click context menu (`TabContextMenu`, workspace sidebar) now opens at the cursor and stays inside the viewport — dropped the HTML Popover API in favor of a measured `position: fixed` + `clampMenuPosition` pure helper. Both menus close on Escape, outside pointerdown, scroll, and window blur.

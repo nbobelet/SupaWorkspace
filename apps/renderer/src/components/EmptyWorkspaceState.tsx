@@ -1,6 +1,7 @@
 import { useCallback, type ReactElement } from 'react'
-import { Terminal, Sparkles } from 'lucide-react'
+import { Terminal, Sparkles, FolderPlus } from 'lucide-react'
 import { useWorkspaceStore } from '../state/workspaceStore'
+import { useOpenWorkspace } from '../hooks/useOpenWorkspace'
 import { addSessionWithFocus } from '../lib/sessionFocus'
 import type { SessionType } from '@shared/session'
 
@@ -8,6 +9,7 @@ export function EmptyWorkspaceState(): ReactElement {
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const workspaces = useWorkspaceStore((s) => s.workspaces)
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId)
+  const openWorkspace = useOpenWorkspace()
 
   const spawn = useCallback(
     async (type: SessionType) => {
@@ -24,7 +26,6 @@ export function EmptyWorkspaceState(): ReactElement {
         type,
         label: res.label,
         state: 'idle',
-        hasUnseenWaiting: false,
       })
     },
     [activeWorkspaceId],
@@ -61,6 +62,18 @@ export function EmptyWorkspaceState(): ReactElement {
           <kbd className="rounded border border-border bg-bg-elevated px-1 py-0.5 font-mono">Ctrl+T</kbd>{' '}
           spawns the last-used type.
         </p>
+        <div className="mt-2 flex w-full flex-col items-center gap-1 border-t border-border pt-4">
+          <button
+            type="button"
+            onClick={() => void openWorkspace()}
+            aria-label="Start a clean workspace by opening another folder"
+            className="flex items-center gap-2 rounded-md border border-border bg-bg-elevated px-3 py-1.5 text-xs hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            <FolderPlus size={14} aria-hidden="true" />
+            <span>Start clean workspace</span>
+          </button>
+          <p className="text-[10px] text-muted">Fresh workspace, keeps your existing ones.</p>
+        </div>
       </div>
     </div>
   )

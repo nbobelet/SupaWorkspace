@@ -5,6 +5,7 @@ import {
   SessionRenameRequest,
   SessionResizeRequest,
   SessionSpawnRequest,
+  SessionSubmitRequest,
   SessionWriteRequest,
   type SessionRenameResponse,
   type SessionSpawnResponse,
@@ -42,6 +43,17 @@ export function registerSessionIpc(opts: {
     sessionManager.write(req.sessionId, req.data)
   })
 
+  ipcMain.handle(IpcChannel.SessionSubmit, async (_, raw): Promise<void> => {
+    const req = SessionSubmitRequest.parse(raw)
+    if (req.data.length === 0) return
+    const payload = req.data.includes('\n')
+      ? `\x1b[200~${req.data.replace(/\r?\n/g, '\r')}\x1b[201~`
+      : req.data
+    sessionManager.write(req.sessionId, payload)
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    sessionManager.write(req.sessionId, '\r')
+  })
+
   ipcMain.handle(IpcChannel.SessionResize, async (_, raw): Promise<void> => {
     const req = SessionResizeRequest.parse(raw)
     sessionManager.resize(req.sessionId, req.cols, req.rows)
@@ -63,6 +75,7 @@ export function registerSessionIpc(opts: {
   return () => {
     ipcMain.removeHandler(IpcChannel.SessionSpawn)
     ipcMain.removeHandler(IpcChannel.SessionWrite)
+    ipcMain.removeHandler(IpcChannel.SessionSubmit)
     ipcMain.removeHandler(IpcChannel.SessionResize)
     ipcMain.removeHandler(IpcChannel.SessionKill)
     ipcMain.removeHandler(IpcChannel.SessionRename)

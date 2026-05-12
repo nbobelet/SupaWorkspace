@@ -2,16 +2,15 @@ import type { SessionState } from '@shared/session'
 
 export type SessionStatus = 'idle' | 'running' | 'waiting' | 'error'
 
-export function getSessionStatus(state: SessionState): SessionStatus {
+export function getSessionStatus(state: SessionState, exitCode?: number | null): SessionStatus {
   switch (state) {
-    case 'error':
-      return 'error'
-    case 'waiting-for-input':
+    case 'asking':
       return 'waiting'
     case 'running':
       return 'running'
+    case 'ending':
+      return exitCode !== undefined && exitCode !== null && exitCode !== 0 ? 'error' : 'idle'
     case 'idle':
-    case 'finished':
     default:
       return 'idle'
   }

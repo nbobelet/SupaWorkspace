@@ -10,7 +10,12 @@ export interface RendererSession {
   type: SessionType
   label: string
   state: SessionState
-  hasUnseenWaiting: boolean
+  exitCode: number | null
+  hasUnseenAsking: boolean
+  hasUnseenEnding: boolean
+  badgeCount: number
+  // Snapshot-restored placeholder: no PTY spawned yet. Cleared on activation.
+  pendingSpawn?: boolean
 }
 
 interface SessionStoreState {
@@ -20,14 +25,23 @@ interface SessionStoreState {
   activeByWorkspace: Record<string, string>
   lastUsedType: SessionType
 
-  addSession: (s: RendererSession) => void
+  addSession: (
+    s: Omit<RendererSession, 'badgeCount' | 'exitCode' | 'hasUnseenAsking' | 'hasUnseenEnding'> & {
+      badgeCount?: number
+      exitCode?: number | null
+      hasUnseenAsking?: boolean
+      hasUnseenEnding?: boolean
+    },
+  ) => void
   removeSession: (id: string) => void
-  setState: (id: string, state: SessionState) => void
+  setState: (id: string, state: SessionState, exitCode?: number | null) => void
   setActive: (id: string | null) => void
-  clearWaitingBadge: (id: string) => void
+  clearAttentionBadge: (id: string) => void
+  bumpBadge: (id: string) => void
   setLastUsedType: (type: SessionType) => void
   renameSession: (id: string, label: string) => void
   reorderScopedTab: (workspaceId: string, from: number, to: number) => void
+  materializeSession: (placeholderId: string, realId: string, label: string) => void
 }
 
 export const useSessionStore = create<SessionStoreState>((set) => ({
@@ -40,8 +54,15 @@ export const useSessionStore = create<SessionStoreState>((set) => ({
   addSession: (s) =>
     set((prev) => {
       const isFirstForWorkspace = prev.activeByWorkspace[s.workspaceId] === undefined
+      const session: RendererSession = {
+        badgeCount: 0,
+        exitCode: null,
+        hasUnseenAsking: false,
+        hasUnseenEnding: false,
+        ...s,
+      }
       return {
-        sessions: { ...prev.sessions, [s.id]: s },
+        sessions: { ...prev.sessions, [s.id]: session },
         order: prev.order.includes(s.id) ? prev.order : [...prev.order, s.id],
         activeId: prev.activeId ?? s.id,
         activeByWorkspace: isFirstForWorkspace
@@ -76,14 +97,27 @@ export const useSessionStore = create<SessionStoreState>((set) => ({
       return { sessions: rest, order, activeId, activeByWorkspace }
     }),
 
-  setState: (id, state) =>
+  setState: (id, state, exitCode) =>
     set((prev) => {
       const existing = prev.sessions[id]
       if (!existing) return prev
-      const hasUnseenWaiting =
-        state === 'waiting-for-input' && prev.activeId !== id ? true : existing.hasUnseenWaiting
+      const hasUnseenAsking =
+        state === 'asking' && prev.activeId !== id ? true : existing.hasUnseenAsking
+      const hasUnseenEnding =
+        state === 'ending' && prev.activeId !== id ? true : existing.hasUnseenEnding
+      const nextExitCode =
+        exitCode !== undefined ? exitCode : state === 'ending' ? existing.exitCode : null
       return {
-        sessions: { ...prev.sessions, [id]: { ...existing, state, hasUnseenWaiting } },
+        sessions: {
+          ...prev.sessions,
+          [id]: {
+            ...existing,
+            state,
+            exitCode: state === 'ending' ? nextExitCode : null,
+            hasUnseenAsking,
+            hasUnseenEnding,
+          },
+        },
       }
     }),
 
@@ -95,16 +129,39 @@ export const useSessionStore = create<SessionStoreState>((set) => ({
       return {
         activeId: id,
         activeByWorkspace: { ...prev.activeByWorkspace, [existing.workspaceId]: id },
-        sessions: { ...prev.sessions, [id]: { ...existing, hasUnseenWaiting: false } },
+        sessions: {
+          ...prev.sessions,
+          [id]: {
+            ...existing,
+            hasUnseenAsking: false,
+            hasUnseenEnding: false,
+            badgeCount: 0,
+          },
+        },
       }
     }),
 
-  clearWaitingBadge: (id) =>
+  clearAttentionBadge: (id) =>
     set((prev) => {
       const existing = prev.sessions[id]
       if (!existing) return prev
       return {
-        sessions: { ...prev.sessions, [id]: { ...existing, hasUnseenWaiting: false } },
+        sessions: {
+          ...prev.sessions,
+          [id]: { ...existing, hasUnseenAsking: false, hasUnseenEnding: false, badgeCount: 0 },
+        },
+      }
+    }),
+
+  bumpBadge: (id) =>
+    set((prev) => {
+      const existing = prev.sessions[id]
+      if (!existing) return prev
+      return {
+        sessions: {
+          ...prev.sessions,
+          [id]: { ...existing, badgeCount: existing.badgeCount + 1 },
+        },
       }
     }),
 
@@ -123,6 +180,31 @@ export const useSessionStore = create<SessionStoreState>((set) => ({
     set((prev) => ({
       order: reorderScoped(prev.order, prev.sessions, workspaceId, from, to),
     })),
+
+  materializeSession: (placeholderId, realId, label) =>
+    set((prev) => {
+      const existing = prev.sessions[placeholderId]
+      if (!existing) return prev
+      const { [placeholderId]: _drop, ...rest } = prev.sessions
+      const materialized: RendererSession = {
+        ...existing,
+        id: realId,
+        label,
+        pendingSpawn: false,
+      }
+      const order = prev.order.map((sid) => (sid === placeholderId ? realId : sid))
+      const activeByWorkspace = { ...prev.activeByWorkspace }
+      for (const ws in activeByWorkspace) {
+        if (activeByWorkspace[ws] === placeholderId) activeByWorkspace[ws] = realId
+      }
+      const activeId = prev.activeId === placeholderId ? realId : prev.activeId
+      return {
+        sessions: { ...rest, [realId]: materialized },
+        order,
+        activeId,
+        activeByWorkspace,
+      }
+    }),
 }))
 
 export function scopeOrder(
@@ -181,7 +263,7 @@ export function selectHighestPriorityTabId(
   for (const id of scopedOrder) {
     const s = sessions[id]
     if (!s) continue
-    const priority = getStatusPriority(getSessionStatus(s.state))
+    const priority = getStatusPriority(getSessionStatus(s.state, s.exitCode))
     if (priority < 2) continue
     if (!best || priority > best.priority) {
       best = { id, priority }
@@ -207,7 +289,7 @@ export function useWorkspaceWorstStatus(workspaceId: string): ReturnType<typeof 
     for (const id in sessions) {
       const s = sessions[id]
       if (!s || s.workspaceId !== workspaceId) continue
-      const status = getSessionStatus(s.state)
+      const status = getSessionStatus(s.state, s.exitCode)
       const p = getStatusPriority(status)
       if (p > worstPriority) {
         worstPriority = p

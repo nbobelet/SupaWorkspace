@@ -1,6 +1,22 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement } from 'react'
 import { toast } from 'sonner'
 import { Settings as SettingsIcon } from 'lucide-react'
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { useWorkspaceStore } from '../state/workspaceStore'
 import { useNotificationStore } from '../state/notificationStore'
 import { useWorkspaceWorstStatus } from '../state/sessionStore'
@@ -23,8 +39,26 @@ export function WorkspaceSidebar(): ReactElement {
   const setWorkspaces = useWorkspaceStore((s) => s.setWorkspaces)
   const upsertWorkspace = useWorkspaceStore((s) => s.upsertWorkspace)
   const removeWorkspace = useWorkspaceStore((s) => s.removeWorkspace)
+  const reorderWorkspaces = useWorkspaceStore((s) => s.reorderWorkspaces)
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace)
   const clearForWorkspace = useNotificationStore((s) => s.clearForWorkspace)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event
+      if (!over || active.id === over.id) return
+      const from = workspaces.findIndex((w) => w.id === active.id)
+      const to = workspaces.findIndex((w) => w.id === over.id)
+      if (from === -1 || to === -1) return
+      reorderWorkspaces(from, to)
+    },
+    [workspaces, reorderWorkspaces],
+  )
 
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   const [settingsOpenFor, setSettingsOpenFor] = useState<string | null>(null)
@@ -113,35 +147,39 @@ export function WorkspaceSidebar(): ReactElement {
         </button>
       </div>
 
-      <ul className="flex-1 overflow-y-auto py-1">
-        {workspaces.length === 0 && (
-          <li className="px-3 py-2 text-xs text-muted">No workspaces yet. Click &ldquo;Open&rdquo;.</li>
-        )}
-        {workspaces.map((w) => (
-          <WorkspaceTile
-            key={w.id}
-            workspace={w}
-            isActive={w.id === activeWorkspaceId}
-            isRenaming={rename.isRenaming(w.id)}
-            renameValue={rename.renameValue}
-            onRenameChange={rename.setRenameValue}
-            onRenameCommit={rename.commitRename}
-            onRenameCancel={rename.cancelRename}
-            onActivate={() => {
-              withViewTransition(() => setActiveWorkspace(w.id))
-              clearForWorkspace(w.id)
-            }}
-            onContextMenu={handleContextMenu}
-            settingsOpen={settingsOpenFor === w.id}
-            onSettingsToggle={() =>
-              setSettingsOpenFor((prev) => (prev === w.id ? null : w.id))
-            }
-            onStartRename={() => rename.startRename(w.id, w.name)}
-            onChangeColor={(hue) => void setColor(w.id, hue)}
-            onDelete={() => void remove(w.id)}
-          />
-        ))}
-      </ul>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={workspaces.map((w) => w.id)} strategy={verticalListSortingStrategy}>
+          <ul className="flex-1 overflow-y-auto py-1">
+            {workspaces.length === 0 && (
+              <li className="px-3 py-2 text-xs text-muted">No workspaces yet. Click &ldquo;Open&rdquo;.</li>
+            )}
+            {workspaces.map((w) => (
+              <WorkspaceTile
+                key={w.id}
+                workspace={w}
+                isActive={w.id === activeWorkspaceId}
+                isRenaming={rename.isRenaming(w.id)}
+                renameValue={rename.renameValue}
+                onRenameChange={rename.setRenameValue}
+                onRenameCommit={rename.commitRename}
+                onRenameCancel={rename.cancelRename}
+                onActivate={() => {
+                  withViewTransition(() => setActiveWorkspace(w.id))
+                  clearForWorkspace(w.id)
+                }}
+                onContextMenu={handleContextMenu}
+                settingsOpen={settingsOpenFor === w.id}
+                onSettingsToggle={() =>
+                  setSettingsOpenFor((prev) => (prev === w.id ? null : w.id))
+                }
+                onStartRename={() => rename.startRename(w.id, w.name)}
+                onChangeColor={(hue) => void setColor(w.id, hue)}
+                onDelete={() => void remove(w.id)}
+              />
+            ))}
+          </ul>
+        </SortableContext>
+      </DndContext>
 
       {menu && (
         <ContextMenu
@@ -194,12 +232,29 @@ function WorkspaceTile({
 }: WorkspaceTileProps): ReactElement {
   const worstStatus = useWorkspaceWorstStatus(w.id)
 
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: w.id,
+    disabled: isRenaming,
+  })
+
+  const sortableStyle: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : undefined,
+  }
+
   const pillStyle = w.color
     ? { background: `oklch(70% 0.15 ${w.color.hue}deg)` }
     : undefined
 
   return (
-    <li className="group/tile relative">
+    <li
+      ref={setNodeRef}
+      style={sortableStyle}
+      className={['group/tile relative', isDragging ? 'z-10' : ''].join(' ')}
+      {...attributes}
+      {...listeners}
+    >
       <div
         data-priority={worstStatus}
         className={[

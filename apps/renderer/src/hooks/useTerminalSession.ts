@@ -6,7 +6,11 @@ import { SearchAddon } from '@xterm/addon-search'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import { useSessionStore } from '../state/sessionStore'
-import { withViewTransition } from '../lib/viewTransition'
+import {
+  createFollowController,
+  type FollowController,
+  type FollowOutputTarget,
+} from '../lib/followOutput'
 
 const SCROLLBACK = 5000
 
@@ -34,12 +38,46 @@ const xtermTheme: ITheme = {
   brightWhite: '#ffffff',
 }
 
+const SCROLLBAR_STYLE_ID = 'supa-xterm-scrollbar'
+const SCROLLBAR_CSS = `
+.xterm .xterm-viewport::-webkit-scrollbar { width: 8px; height: 8px; }
+.xterm .xterm-viewport::-webkit-scrollbar-track { background: transparent; }
+.xterm .xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  transition: background-color 120ms ease;
+}
+.xterm .xterm-viewport:hover::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); }
+.xterm .xterm-viewport::-webkit-scrollbar-thumb:active { background: rgba(255, 255, 255, 0.28); }
+@media (prefers-reduced-motion: reduce) {
+  .xterm .xterm-viewport::-webkit-scrollbar-thumb { transition: none; }
+}
+`
+
+function ensureScrollbarStyles(): void {
+  if (typeof document === 'undefined') return
+  if (document.getElementById(SCROLLBAR_STYLE_ID)) return
+  const style = document.createElement('style')
+  style.id = SCROLLBAR_STYLE_ID
+  style.textContent = SCROLLBAR_CSS
+  document.head.appendChild(style)
+}
+
 interface TerminalHandle {
   term: Terminal
   fit: FitAddon
   element: HTMLDivElement
   webgl: WebglAddon | null
   inputDisposable: { dispose: () => void }
+  follow: FollowController
+}
+
+function toFollowTarget(term: Terminal): FollowOutputTarget {
+  return {
+    buffer: term.buffer,
+    scrollToBottom: () => term.scrollToBottom(),
+    onScroll: (cb) => term.onScroll(cb),
+  }
 }
 
 const handles = new Map<string, TerminalHandle>()
@@ -52,21 +90,22 @@ function ensureGlobalListeners(): void {
   if (listenersInitialized) return
   listenersInitialized = true
 
+  ensureScrollbarStyles()
+
   globalDataUnsub = window.ws.session.onData(({ sessionId, data }) => {
     const handle = handles.get(sessionId)
     if (!handle) return
     handle.term.write(data, () => {
-      // Follow-output mode: always pin to the latest line as new data arrives.
-      // The user can still scroll back at will; the next write re-pins.
-      handle.term.scrollToBottom()
+      handle.follow.onWrite()
     })
   })
 
-  globalExitUnsub = window.ws.session.onExit(({ sessionId }) => {
-    withViewTransition(() => {
-      useSessionStore.getState().removeSession(sessionId)
-    })
-    disposeTerminal(sessionId)
+  // PTY exit no longer auto-removes the session — the SessionState event
+  // moves the tab to `ending` state with exitCode, and the tab stays around
+  // so the user can review output / exit code. Explicit close paths
+  // (closeSession helper, X button, $mod+w) remove + dispose the terminal.
+  globalExitUnsub = window.ws.session.onExit(() => {
+    // intentionally empty
   })
 
   globalStateUnsub = window.ws.session.onState(({ sessionId, state }) => {
@@ -114,7 +153,9 @@ function getOrCreateHandle(sessionId: string): TerminalHandle {
     void window.ws.session.write({ sessionId, data })
   })
 
-  const handle: TerminalHandle = { term, fit, element, webgl, inputDisposable }
+  const follow = createFollowController(toFollowTarget(term))
+
+  const handle: TerminalHandle = { term, fit, element, webgl, inputDisposable, follow }
   handles.set(sessionId, handle)
   return handle
 }
@@ -122,7 +163,7 @@ function getOrCreateHandle(sessionId: string): TerminalHandle {
 export function focusSession(sessionId: string): void {
   const handle = handles.get(sessionId)
   if (!handle) return
-  handle.term.scrollToBottom()
+  handle.follow.resync()
   handle.term.focus()
 }
 
@@ -153,19 +194,30 @@ export function useTerminalSession(sessionId: string, container: HTMLElement | n
 
     container.appendChild(handle.element)
 
-    const fitAndReport = (): void => {
+    let wasVisible = false
+
+    const fitAndReport = (visibleNow: boolean): void => {
       try {
         handle.fit.fit()
         const { cols, rows } = handle.term
         void window.ws.session.resize({ sessionId, cols, rows })
+        if (visibleNow && !wasVisible) {
+          handle.follow.resync()
+        }
+        wasVisible = visibleNow
       } catch {
         // container not measurable yet
       }
     }
 
-    requestAnimationFrame(fitAndReport)
+    requestAnimationFrame(() => fitAndReport(container.clientWidth > 0 && container.clientHeight > 0))
 
-    const observer = new ResizeObserver(() => fitAndReport())
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      const rect = entry?.contentRect
+      const visibleNow = rect ? rect.width > 0 && rect.height > 0 : container.clientWidth > 0 && container.clientHeight > 0
+      fitAndReport(visibleNow)
+    })
     observer.observe(container)
 
     return () => {
@@ -180,6 +232,7 @@ export function useTerminalSession(sessionId: string, container: HTMLElement | n
 export function disposeTerminal(sessionId: string): void {
   const handle = handles.get(sessionId)
   if (!handle) return
+  handle.follow.dispose()
   handle.inputDisposable.dispose()
   handle.webgl?.dispose()
   handle.term.dispose()

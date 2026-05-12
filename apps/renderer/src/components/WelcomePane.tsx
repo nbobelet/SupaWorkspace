@@ -1,27 +1,14 @@
 import { useCallback, type ReactElement } from 'react'
-import { toast } from 'sonner'
 import { useWorkspaceStore } from '../state/workspaceStore'
+import { useOpenWorkspace } from '../hooks/useOpenWorkspace'
 import { addSessionWithFocus } from '../lib/sessionFocus'
 import type { SessionType } from '@shared/session'
 
 export function WelcomePane(): ReactElement {
   const workspaces = useWorkspaceStore((s) => s.workspaces)
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
-  const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace)
-  const upsertWorkspace = useWorkspaceStore((s) => s.upsertWorkspace)
 
-  const openWorkspace = useCallback(async () => {
-    const res = await window.ws.workspace.open()
-    if (res.workspace) {
-      upsertWorkspace(res.workspace)
-      setActiveWorkspace(res.workspace.id)
-      if (res.wasExisting) {
-        toast.info(`Already open as "${res.workspace.name}"`, {
-          description: 'Switched to the existing workspace.',
-        })
-      }
-    }
-  }, [upsertWorkspace, setActiveWorkspace])
+  const openWorkspace = useOpenWorkspace()
 
   const spawn = useCallback(
     async (type: SessionType) => {
@@ -38,7 +25,6 @@ export function WelcomePane(): ReactElement {
         type,
         label: res.label,
         state: 'idle',
-        hasUnseenWaiting: false,
       })
     },
     [activeWorkspaceId],
@@ -120,6 +106,23 @@ export function WelcomePane(): ReactElement {
               Shortcut: <kbd className="rounded border border-border bg-bg-elevated px-1.5 py-0.5 font-mono text-[10px]">Ctrl+Shift+T</kbd>{' '}
               spawns the last-used type.
             </p>
+          </section>
+        )}
+
+        {hasActive && (
+          <section className="flex w-full flex-col items-center gap-2 border-t border-border pt-5" aria-labelledby="clean-step">
+            <h2 id="clean-step" className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Or start over
+            </h2>
+            <button
+              type="button"
+              onClick={() => void openWorkspace()}
+              aria-label="Start a clean workspace by opening another folder"
+              className="rounded-md border border-border bg-bg-elevated px-4 py-2 text-xs hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
+              Start clean workspace
+            </button>
+            <p className="text-[11px] text-muted">Fresh workspace, keeps your existing ones.</p>
           </section>
         )}
 

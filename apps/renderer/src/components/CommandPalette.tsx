@@ -5,6 +5,7 @@ import { usePaletteStore } from '../state/paletteStore'
 import { useScopedOrder, useSessionStore } from '../state/sessionStore'
 import { useWorkspaceStore } from '../state/workspaceStore'
 import { addSessionWithFocus } from '../lib/sessionFocus'
+import { closeSession } from '../lib/closeSession'
 import type { SessionType } from '@shared/session'
 
 export function CommandPalette(): ReactElement | null {
@@ -37,7 +38,6 @@ export function CommandPalette(): ReactElement | null {
         type,
         label: res.label,
         state: 'idle',
-        hasUnseenWaiting: false,
       })
     },
     [activeWorkspaceId],
@@ -117,7 +117,7 @@ export function CommandPalette(): ReactElement | null {
                 disabled={!activeId}
                 onSelect={() => {
                   if (!activeId) return
-                  void window.ws.session.kill({ sessionId: activeId })
+                  closeSession(activeId)
                   close()
                 }}
               >

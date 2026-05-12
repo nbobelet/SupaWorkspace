@@ -104,9 +104,10 @@ const api = {
       on<NotificationPushEvent>(IpcChannel.NotifPush, listener),
   },
   notes: {
-    get: (): Promise<NotesGetResponse> => ipcRenderer.invoke(IpcChannel.NotesGet),
-    set: (content: string): Promise<void> =>
-      ipcRenderer.invoke(IpcChannel.NotesSet, { content }),
+    get: (workspaceId: string): Promise<NotesGetResponse> =>
+      ipcRenderer.invoke(IpcChannel.NotesGet, { workspaceId }),
+    set: (workspaceId: string, content: string): Promise<void> =>
+      ipcRenderer.invoke(IpcChannel.NotesSet, { workspaceId, content }),
   },
   inputHistory: {
     get: (): Promise<InputHistoryGetResponse> => ipcRenderer.invoke(IpcChannel.InputHistoryGet),

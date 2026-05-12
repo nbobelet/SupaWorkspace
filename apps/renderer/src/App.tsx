@@ -7,7 +7,7 @@ import { SessionTabs } from './components/SessionTabs'
 import { LayoutSwitcher } from './components/LayoutSwitcher'
 import { SettingsPanel } from './components/settings/SettingsPanel'
 import { CommandPalette } from './components/CommandPalette'
-import { CommandInputBar } from './components/CommandInputBar'
+import { SessionCommandBar } from './components/SessionCommandBar'
 import { CmdGuardModal } from './components/CmdGuardModal'
 import { BugReportButton } from './components/BugReportButton'
 import { BugReportDialog } from './components/BugReportDialog'
@@ -16,12 +16,13 @@ import { useWorkspaceStore } from './state/workspaceStore'
 import { useLayoutStore } from './state/layoutStore'
 import { useNotificationStore } from './state/notificationStore'
 import { usePaletteStore } from './state/paletteStore'
-import { useInputBarStore } from './state/inputBarStore'
+import { useSessionCommandBarStore } from './state/sessionCommandBarStore'
 import { useCmdGuardStore } from './state/cmdGuardStore'
 import { useKeybindings } from './hooks/useKeybindings'
 import { focusSession } from './hooks/useTerminalSession'
 import { withViewTransition } from './lib/viewTransition'
-import { addSessionWithFocus } from './lib/sessionFocus'
+import { addSessionWithFocus, activateSession } from './lib/sessionFocus'
+import { closeSession } from './lib/closeSession'
 import type { SessionType } from '@shared/session'
 
 export function App(): ReactElement {
@@ -43,18 +44,25 @@ export function App(): ReactElement {
 
   const pushNotif = useNotificationStore((s) => s.push)
   const togglePalette = usePaletteStore((s) => s.toggle)
-  const toggleInputBar = useInputBarStore((s) => s.toggleVisible)
+  const toggleInputBar = useSessionCommandBarStore((s) => s.toggleVisible)
   const loadCmdGuard = useCmdGuardStore((s) => s.load)
 
   const [settingsOpen, setSettingsOpen] = useState(false)
 
-  const focusCommandInput = useCallback(() => {
-    if (!useInputBarStore.getState().visible) {
-      useInputBarStore.getState().toggleVisible()
+  const focusSessionCommandBar = useCallback(() => {
+    if (!useSessionCommandBarStore.getState().visible) {
+      useSessionCommandBarStore.getState().toggleVisible()
     }
     requestAnimationFrame(() => {
-      window.dispatchEvent(new CustomEvent('command-input:focus-request'))
+      window.dispatchEvent(new CustomEvent('session-command-bar:focus-request'))
     })
+  }, [])
+
+  // Workspace-scoped command bar does not exist as a persistent component
+  // today (the WorkspaceSidebar uses an inline rename input only). Stub kept
+  // for symmetry — bind a shortcut here once a real WorkspaceCommandBar lands.
+  const focusWorkspaceCommandBar = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('workspace-command-bar:focus-request'))
   }, [])
 
   const toggleAppSettings = useCallback(() => {
@@ -70,27 +78,19 @@ export function App(): ReactElement {
       const validIds = new Set(wsRes.workspaces.map((w) => w.id))
       const snapRes = await window.ws.sessionSnapshot.list()
       if (cancelled) return
+      // Register snapshot entries as placeholders. PTYs are spawned lazily on
+      // first activation so launching the app with N tabs no longer fires N
+      // xterm / shell processes up front.
       for (const entry of snapRes.envelope.entries) {
         if (!validIds.has(entry.workspaceId)) continue
-        try {
-          const spawned = await window.ws.session.spawn({
-            workspaceId: entry.workspaceId,
-            type: entry.type,
-            cols: 80,
-            rows: 24,
-            label: entry.label,
-          })
-          addSession({
-            id: spawned.sessionId,
-            workspaceId: entry.workspaceId,
-            type: entry.type,
-            label: spawned.label,
-            state: 'idle',
-            hasUnseenWaiting: false,
-          })
-        } catch (err) {
-          console.warn('[snapshot] failed to restore session', entry, err)
-        }
+        addSession({
+          id: `pending-${crypto.randomUUID()}`,
+          workspaceId: entry.workspaceId,
+          type: entry.type,
+          label: entry.label,
+          state: 'idle',
+          pendingSpawn: true,
+        })
       }
     })()
     return () => {
@@ -120,8 +120,13 @@ export function App(): ReactElement {
     const fallback = state.order.find((sid) => state.sessions[sid]?.workspaceId === activeWorkspaceId)
     const target = stillValid ?? fallback ?? null
     if (target) {
+      // Only mark the tab as active. Do NOT lazily spawn — switching workspaces
+      // must not implicitly start PTYs. The user activates explicitly to spawn.
       setActive(target)
-      requestAnimationFrame(() => focusSession(target))
+      const session = state.sessions[target]
+      if (session && !session.pendingSpawn) {
+        requestAnimationFrame(() => focusSession(target))
+      }
     }
   }, [activeWorkspaceId, setActive])
 
@@ -184,7 +189,6 @@ export function App(): ReactElement {
         type,
         label: res.label,
         state: 'idle',
-        hasUnseenWaiting: false,
       })
     },
     [activeWorkspaceId],
@@ -212,9 +216,9 @@ export function App(): ReactElement {
             : scopedOrder.length - 1
           : (idx + direction + scopedOrder.length) % scopedOrder.length
       const next = scopedOrder[nextIdx]
-      if (next) setActive(next)
+      if (next) void activateSession(next)
     },
-    [scopedOrder, activeId, setActive],
+    [scopedOrder, activeId],
   )
 
   const reorderActiveTab = useCallback(
@@ -234,11 +238,11 @@ export function App(): ReactElement {
     cycleSessionPrev: () => cycleSession(-1),
     jumpToSession: (i) => {
       const id = scopedOrder[i]
-      if (id) setActive(id)
+      if (id) void activateSession(id)
     },
     spawnLastUsed: () => void spawnLastUsed(lastUsedType),
     killActive: () => {
-      if (activeId) void window.ws.session.kill({ sessionId: activeId })
+      if (activeId) closeSession(activeId)
     },
     cycleWorkspaceNext: () => cycleWorkspace(1),
     cycleWorkspacePrev: () => cycleWorkspace(-1),
@@ -253,12 +257,19 @@ export function App(): ReactElement {
     },
     togglePalette,
     toggleInputBar,
-    cycleLayout: cycleMode,
+    cycleLayout: () => {
+      if (activeWorkspaceId) cycleMode(activeWorkspaceId)
+    },
     reorderActiveTabLeft: () => reorderActiveTab(-1),
     reorderActiveTabRight: () => reorderActiveTab(1),
-    splitVertical: () => setLayoutMode('split-vertical'),
-    splitHorizontal: () => setLayoutMode('split-horizontal'),
-    focusCommandInput,
+    splitVertical: () => {
+      if (activeWorkspaceId) setLayoutMode(activeWorkspaceId, 'split-vertical')
+    },
+    splitHorizontal: () => {
+      if (activeWorkspaceId) setLayoutMode(activeWorkspaceId, 'split-horizontal')
+    },
+    focusSessionCommandBar,
+    focusWorkspaceCommandBar,
     toggleAppSettings,
   })
 
@@ -291,7 +302,7 @@ export function App(): ReactElement {
         <div className="flex-1 overflow-hidden">
           <PaneMosaic />
         </div>
-        <CommandInputBar />
+        <SessionCommandBar />
         <footer className="flex items-center justify-between border-t border-border bg-bg-sunken px-3 py-1 text-[10px] text-muted">
           <span>
             Ctrl+K palette · Ctrl+/ input bar · Ctrl+I focus input · Ctrl+, settings · Ctrl+1–9 focus

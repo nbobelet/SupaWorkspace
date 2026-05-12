@@ -1,6 +1,7 @@
 import { useState, type ReactElement } from 'react'
 import { TerminalPane } from './TerminalPane'
 import { useSessionStore } from '../state/sessionStore'
+import { activateSession } from '../lib/sessionFocus'
 
 const CASCADE_OFFSET_X = 32
 const CASCADE_OFFSET_Y = 28
@@ -10,7 +11,6 @@ export function CascadeLayout(): ReactElement {
   const order = useSessionStore((s) => s.order)
   const sessions = useSessionStore((s) => s.sessions)
   const activeId = useSessionStore((s) => s.activeId)
-  const setActive = useSessionStore((s) => s.setActive)
   const [stackOrder, setStackOrder] = useState<string[]>(order)
 
   const display = stackOrder.filter((id) => order.includes(id))
@@ -20,7 +20,7 @@ export function CascadeLayout(): ReactElement {
 
   const bringToFront = (id: string): void => {
     setStackOrder((prev) => [...prev.filter((sid) => sid !== id), id])
-    setActive(id)
+    void activateSession(id)
   }
 
   return (

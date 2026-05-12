@@ -3,7 +3,7 @@ import { z } from 'zod'
 export const SessionType = z.enum(['claude', 'shell'])
 export type SessionType = z.infer<typeof SessionType>
 
-export const SessionState = z.enum(['idle', 'running', 'waiting-for-input', 'finished', 'error'])
+export const SessionState = z.enum(['idle', 'running', 'asking', 'ending'])
 export type SessionState = z.infer<typeof SessionState>
 
 export const SessionConfig = z.object({

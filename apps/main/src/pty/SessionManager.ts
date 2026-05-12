@@ -7,7 +7,7 @@ import { StateDetector } from './stateDetector'
 export interface SessionManagerEvents {
   onData: (sessionId: string, data: string) => void
   onExit: (sessionId: string, exitCode: number, signal?: number) => void
-  onState: (sessionId: string, state: SessionState) => void
+  onState: (sessionId: string, state: SessionState, exitCode?: number | null) => void
   onSessionsChanged?: (configs: SessionConfig[]) => void
 }
 
@@ -28,7 +28,7 @@ export class SessionManager {
 
   constructor(private readonly events: SessionManagerEvents) {
     this.stateDetector = new StateDetector({
-      onStateChange: (id, state) => this.events.onState(id, state),
+      onStateChange: (id, state, exitCode) => this.events.onState(id, state, exitCode),
     })
   }
 

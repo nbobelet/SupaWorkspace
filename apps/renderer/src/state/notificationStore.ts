@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { NotificationKind } from '@shared/notification'
+import { useSessionStore } from './sessionStore'
 
 export interface RendererNotification {
   id: string
@@ -31,6 +32,12 @@ export const useNotificationStore = create<NotificationStoreState>((set) => ({
 
   push: (notif) =>
     set((prev) => {
+      if (notif.sessionId !== undefined) {
+        const sessionState = useSessionStore.getState()
+        if (sessionState.activeId !== notif.sessionId) {
+          sessionState.bumpBadge(notif.sessionId)
+        }
+      }
       const next = [{ ...notif, read: false }, ...prev.notifications]
       return { notifications: next.slice(0, MAX_NOTIFICATIONS) }
     }),

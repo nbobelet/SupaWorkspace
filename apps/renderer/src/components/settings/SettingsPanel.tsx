@@ -61,7 +61,7 @@ export function SettingsPanel({ workspaceId, onClose }: SettingsPanelProps): Rea
         {tab === 'claude-md' && <ClaudeMdEditor workspaceId={workspaceId} />}
         {tab === 'mcp' && <McpServersEditor workspaceId={workspaceId} />}
         {tab === 'permissions' && <PermissionsManager workspaceId={workspaceId} />}
-        {tab === 'notes' && <NotesTab />}
+        {tab === 'notes' && <NotesTab workspaceId={workspaceId} />}
         {tab === 'security' && <SecurityTab />}
       </div>
     </aside>

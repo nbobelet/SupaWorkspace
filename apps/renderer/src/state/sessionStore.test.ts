@@ -8,14 +8,22 @@ import {
   type RendererSession,
 } from './sessionStore'
 
-function s(id: string, workspaceId: string, state: SessionState = 'idle'): RendererSession {
+function s(
+  id: string,
+  workspaceId: string,
+  state: SessionState = 'idle',
+  exitCode: number | null = null,
+): RendererSession {
   return {
     id,
     workspaceId,
     type: 'shell',
     label: id,
     state,
-    hasUnseenWaiting: false,
+    exitCode,
+    hasUnseenAsking: false,
+    hasUnseenEnding: false,
+    badgeCount: 0,
   }
 }
 
@@ -91,28 +99,28 @@ describe('reorderScoped', () => {
 describe('selectHighestPriorityTabId', () => {
   const ws1 = 'ws1'
 
-  it('returns null when no session is urgent (only idle/running/finished)', () => {
+  it('returns null when no session is urgent (only idle/running/ending-ok)', () => {
     const sessions = {
       a: s('a', ws1, 'idle'),
       b: s('b', ws1, 'running'),
-      c: s('c', ws1, 'finished'),
+      c: s('c', ws1, 'ending', 0),
     }
     expect(selectHighestPriorityTabId(sessions, ['a', 'b', 'c'])).toBeNull()
   })
 
-  it('picks error over waiting over running', () => {
+  it('picks error (ending with non-zero exitCode) over asking over running', () => {
     const sessions = {
       a: s('a', ws1, 'running'),
-      b: s('b', ws1, 'waiting-for-input'),
-      c: s('c', ws1, 'error'),
+      b: s('b', ws1, 'asking'),
+      c: s('c', ws1, 'ending', 1),
     }
     expect(selectHighestPriorityTabId(sessions, ['a', 'b', 'c'])).toBe('c')
   })
 
-  it('picks waiting when there is no error', () => {
+  it('picks asking when there is no error', () => {
     const sessions = {
       a: s('a', ws1, 'running'),
-      b: s('b', ws1, 'waiting-for-input'),
+      b: s('b', ws1, 'asking'),
       c: s('c', ws1, 'idle'),
     }
     expect(selectHighestPriorityTabId(sessions, ['a', 'b', 'c'])).toBe('b')
@@ -120,8 +128,8 @@ describe('selectHighestPriorityTabId', () => {
 
   it('breaks ties by leftmost (iteration order)', () => {
     const sessions = {
-      a: s('a', ws1, 'waiting-for-input'),
-      b: s('b', ws1, 'waiting-for-input'),
+      a: s('a', ws1, 'asking'),
+      b: s('b', ws1, 'asking'),
     }
     expect(selectHighestPriorityTabId(sessions, ['a', 'b'])).toBe('a')
     expect(selectHighestPriorityTabId(sessions, ['b', 'a'])).toBe('b')
@@ -129,13 +137,65 @@ describe('selectHighestPriorityTabId', () => {
 
   it('ignores ids not present in sessions map', () => {
     const sessions = {
-      a: s('a', ws1, 'error'),
+      a: s('a', ws1, 'ending', 1),
     }
     expect(selectHighestPriorityTabId(sessions, ['ghost', 'a'])).toBe('a')
   })
 
   it('returns null for empty scoped order', () => {
     expect(selectHighestPriorityTabId({}, [])).toBeNull()
+  })
+})
+
+describe('setState attention flags', () => {
+  const ws1 = '550e8400-e29b-41d4-a716-446655440001'
+
+  beforeEach(() => {
+    useSessionStore.setState({
+      sessions: {},
+      order: [],
+      activeId: null,
+      activeByWorkspace: {},
+      lastUsedType: 'shell',
+    })
+  })
+
+  it('marks hasUnseenAsking when an inactive session transitions to asking', () => {
+    useSessionStore.getState().addSession(s('a', ws1))
+    useSessionStore.getState().addSession(s('b', ws1))
+    useSessionStore.getState().setActive('a')
+    useSessionStore.getState().setState('b', 'asking')
+    expect(useSessionStore.getState().sessions['b']?.hasUnseenAsking).toBe(true)
+  })
+
+  it('does not mark hasUnseenAsking when the active session transitions to asking', () => {
+    useSessionStore.getState().addSession(s('a', ws1))
+    useSessionStore.getState().setActive('a')
+    useSessionStore.getState().setState('a', 'asking')
+    expect(useSessionStore.getState().sessions['a']?.hasUnseenAsking).toBe(false)
+  })
+
+  it('marks hasUnseenEnding with exitCode when an inactive session ends', () => {
+    useSessionStore.getState().addSession(s('a', ws1))
+    useSessionStore.getState().addSession(s('b', ws1))
+    useSessionStore.getState().setActive('a')
+    useSessionStore.getState().setState('b', 'ending', 1)
+    const b = useSessionStore.getState().sessions['b']
+    expect(b?.hasUnseenEnding).toBe(true)
+    expect(b?.state).toBe('ending')
+    expect(b?.exitCode).toBe(1)
+  })
+
+  it('clears both attention flags on setActive', () => {
+    useSessionStore.getState().addSession(s('a', ws1))
+    useSessionStore.getState().addSession(s('b', ws1))
+    useSessionStore.getState().setActive('a')
+    useSessionStore.getState().setState('b', 'asking')
+    useSessionStore.getState().setState('b', 'ending', 0)
+    useSessionStore.getState().setActive('b')
+    const b = useSessionStore.getState().sessions['b']
+    expect(b?.hasUnseenAsking).toBe(false)
+    expect(b?.hasUnseenEnding).toBe(false)
   })
 })
 
@@ -197,9 +257,6 @@ describe('activeByWorkspace tracking', () => {
     useSessionStore.getState().addSession(s('b', ws2))
     useSessionStore.getState().setActive('a')
     useSessionStore.getState().removeSession('a')
-    // Only `b` (in ws2) remains, so the legacy global fallback is acceptable
-    // here — but the workspace entry for ws1 must be cleared so PaneMosaic
-    // renders <EmptyWorkspaceState> on switch back.
     expect(useSessionStore.getState().activeByWorkspace[ws1]).toBeUndefined()
   })
 

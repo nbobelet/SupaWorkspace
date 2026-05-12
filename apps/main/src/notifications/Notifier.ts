@@ -31,7 +31,7 @@ export class Notifier {
     this.previousState.delete(sessionId)
   }
 
-  handleStateChange(sessionId: string, state: SessionState): void {
+  handleStateChange(sessionId: string, state: SessionState, exitCode?: number | null): void {
     const previous = this.previousState.get(sessionId) ?? 'idle'
     this.previousState.set(sessionId, state)
     if (previous === state) return
@@ -39,21 +39,15 @@ export class Notifier {
     const session = this.sessions.get(sessionId)
     if (!session) return
 
-    if (state === 'waiting-for-input') {
+    if (state === 'asking') {
       this.emit(session, 'user-input-required')
       this.maybeNotify(session, 'Claude needs input', 'waiting for permission or prompt')
       return
     }
 
-    if (state === 'finished' && session.type === 'claude' && previous === 'running') {
-      this.emit(session, 'request-complete')
-      this.maybeNotify(session, 'Claude finished', 'session is idle')
-      return
-    }
-
-    if (state === 'error') {
+    if (state === 'ending' && exitCode !== undefined && exitCode !== null && exitCode !== 0) {
       this.emit(session, 'error')
-      this.maybeNotify(session, 'Session errored', `${session.label} exited with error`)
+      this.maybeNotify(session, 'Session errored', `${session.label} exited with code ${exitCode}`)
     }
   }
 

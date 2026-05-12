@@ -118,6 +118,7 @@ export type SessionExitEvent = z.infer<typeof SessionExitEvent>
 export const SessionStateEvent = z.object({
   sessionId: z.string().uuid(),
   state: SessionState,
+  exitCode: z.number().int().nullable().optional(),
 })
 export type SessionStateEvent = z.infer<typeof SessionStateEvent>
 
@@ -244,12 +245,18 @@ export const PermissionsGrantConflictsResponse = z.object({
 })
 export type PermissionsGrantConflictsResponse = z.infer<typeof PermissionsGrantConflictsResponse>
 
+export const NotesGetRequest = z.object({
+  workspaceId: z.string().uuid(),
+})
+export type NotesGetRequest = z.infer<typeof NotesGetRequest>
+
 export const NotesGetResponse = z.object({
   content: z.string(),
 })
 export type NotesGetResponse = z.infer<typeof NotesGetResponse>
 
 export const NotesSetRequest = z.object({
+  workspaceId: z.string().uuid(),
   content: z.string().max(1_000_000),
 })
 export type NotesSetRequest = z.infer<typeof NotesSetRequest>
