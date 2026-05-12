@@ -1,7 +1,7 @@
 import { useCallback, type ReactElement } from 'react'
 import { toast } from 'sonner'
 import { useWorkspaceStore } from '../state/workspaceStore'
-import { useSessionStore } from '../state/sessionStore'
+import { addSessionWithFocus } from '../lib/sessionFocus'
 import type { SessionType } from '@shared/session'
 
 export function WelcomePane(): ReactElement {
@@ -9,7 +9,6 @@ export function WelcomePane(): ReactElement {
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace)
   const upsertWorkspace = useWorkspaceStore((s) => s.upsertWorkspace)
-  const addSession = useSessionStore((s) => s.addSession)
 
   const openWorkspace = useCallback(async () => {
     const res = await window.ws.workspace.open()
@@ -33,7 +32,7 @@ export function WelcomePane(): ReactElement {
         cols: 80,
         rows: 24,
       })
-      addSession({
+      addSessionWithFocus({
         id: res.sessionId,
         workspaceId: activeWorkspaceId,
         type,
@@ -42,7 +41,7 @@ export function WelcomePane(): ReactElement {
         hasUnseenWaiting: false,
       })
     },
-    [activeWorkspaceId, addSession],
+    [activeWorkspaceId],
   )
 
   const hasWorkspaces = workspaces.length > 0

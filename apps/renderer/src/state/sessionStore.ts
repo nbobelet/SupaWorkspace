@@ -56,13 +56,20 @@ export const useSessionStore = create<SessionStoreState>((set) => ({
       const removed = prev.sessions[id]
       const { [id]: _removed, ...rest } = prev.sessions
       const order = prev.order.filter((sid) => sid !== id)
+      // Same-workspace fallback first. Only fall back to any session if the
+      // killed session had no workspace siblings — otherwise we'd hop to a
+      // different workspace and surface its content under the current one.
+      const sameWorkspaceFallback = removed
+        ? (order.find((sid) => rest[sid]?.workspaceId === removed.workspaceId) ?? null)
+        : null
       const activeId =
-        prev.activeId === id ? (order[order.length - 1] ?? null) : prev.activeId
+        prev.activeId === id
+          ? (sameWorkspaceFallback ?? order[order.length - 1] ?? null)
+          : prev.activeId
       let activeByWorkspace = prev.activeByWorkspace
       if (removed && activeByWorkspace[removed.workspaceId] === id) {
-        const fallback = order.find((sid) => rest[sid]?.workspaceId === removed.workspaceId)
         const next = { ...activeByWorkspace }
-        if (fallback) next[removed.workspaceId] = fallback
+        if (sameWorkspaceFallback) next[removed.workspaceId] = sameWorkspaceFallback
         else delete next[removed.workspaceId]
         activeByWorkspace = next
       }

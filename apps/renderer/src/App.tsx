@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactElement } from 'react'
 import { Toaster, toast } from 'sonner'
+import { Settings as SettingsIcon } from 'lucide-react'
 import { PaneMosaic } from './components/PaneMosaic'
 import { WorkspaceSidebar } from './components/WorkspaceSidebar'
 import { SessionTabs } from './components/SessionTabs'
@@ -18,6 +19,7 @@ import { useCmdGuardStore } from './state/cmdGuardStore'
 import { useKeybindings } from './hooks/useKeybindings'
 import { focusSession } from './hooks/useTerminalSession'
 import { withViewTransition } from './lib/viewTransition'
+import { addSessionWithFocus } from './lib/sessionFocus'
 import type { SessionType } from '@shared/session'
 
 export function App(): ReactElement {
@@ -43,6 +45,19 @@ export function App(): ReactElement {
   const loadCmdGuard = useCmdGuardStore((s) => s.load)
 
   const [settingsOpen, setSettingsOpen] = useState(false)
+
+  const focusCommandInput = useCallback(() => {
+    if (!useInputBarStore.getState().visible) {
+      useInputBarStore.getState().toggleVisible()
+    }
+    requestAnimationFrame(() => {
+      window.dispatchEvent(new CustomEvent('command-input:focus-request'))
+    })
+  }, [])
+
+  const toggleAppSettings = useCallback(() => {
+    setSettingsOpen((v) => !v)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -161,7 +176,7 @@ export function App(): ReactElement {
         cols: 80,
         rows: 24,
       })
-      addSession({
+      addSessionWithFocus({
         id: res.sessionId,
         workspaceId: activeWorkspaceId,
         type,
@@ -170,7 +185,7 @@ export function App(): ReactElement {
         hasUnseenWaiting: false,
       })
     },
-    [activeWorkspaceId, addSession],
+    [activeWorkspaceId],
   )
 
   const cycleWorkspace = useCallback(
@@ -241,14 +256,32 @@ export function App(): ReactElement {
     reorderActiveTabRight: () => reorderActiveTab(1),
     splitVertical: () => setLayoutMode('split-vertical'),
     splitHorizontal: () => setLayoutMode('split-horizontal'),
+    focusCommandInput,
+    toggleAppSettings,
   })
 
   return (
     <div className="flex h-screen w-screen bg-bg text-fg">
-      <WorkspaceSidebar settingsOpen={settingsOpen} onSettingsToggle={() => setSettingsOpen((v) => !v)} />
+      <WorkspaceSidebar />
 
       <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex items-center justify-end border-b border-border bg-bg-sunken px-3 py-1.5 text-xs">
+        <header className="flex items-center justify-end gap-2 border-b border-border bg-bg-sunken px-3 py-1.5 text-xs">
+          <button
+            type="button"
+            onClick={toggleAppSettings}
+            aria-pressed={settingsOpen}
+            aria-label="Toggle settings"
+            title="Toggle settings (Ctrl+,)"
+            className={[
+              'inline-flex items-center gap-1 rounded-sm border px-2 py-1 text-xs',
+              settingsOpen
+                ? 'border-accent bg-accent/10 text-accent'
+                : 'border-border bg-bg-elevated text-fg-subtle hover:border-border-strong',
+            ].join(' ')}
+          >
+            <SettingsIcon size={12} aria-hidden="true" />
+            <span>Settings</span>
+          </button>
           <LayoutSwitcher />
         </header>
         <SessionTabs />
@@ -257,7 +290,10 @@ export function App(): ReactElement {
         </div>
         <CommandInputBar />
         <footer className="flex items-center justify-between border-t border-border bg-bg-sunken px-3 py-1 text-[10px] text-muted">
-          <span>Ctrl+K palette · Ctrl+/ input bar · Ctrl+1–9 focus · Ctrl+\ layout · Ctrl+T new {lastUsedType}</span>
+          <span>
+            Ctrl+K palette · Ctrl+/ input bar · Ctrl+I focus input · Ctrl+, settings · Ctrl+1–9 focus
+            · Ctrl+\ layout · Ctrl+T new {lastUsedType}
+          </span>
           <span>
             {scopedOrder.length} session{scopedOrder.length === 1 ? '' : 's'}
           </span>

@@ -21,6 +21,7 @@ import { useWorkspaceStore } from '../state/workspaceStore'
 import { useLayoutStore } from '../state/layoutStore'
 import { useInlineRename } from '../hooks/useInlineRename'
 import { focusSession } from '../hooks/useTerminalSession'
+import { addSessionWithFocus } from '../lib/sessionFocus'
 import { getSessionStatus } from '../state/sessionStatus'
 import { StatusIcon } from './StatusIcon'
 import { TabContextMenu, type TabAction } from './TabContextMenu'
@@ -42,7 +43,6 @@ export function SessionTabs(): ReactElement {
   const sessions = useSessionStore((s) => s.sessions)
   const activeId = useSessionStore((s) => s.activeId)
   const setActive = useSessionStore((s) => s.setActive)
-  const addSession = useSessionStore((s) => s.addSession)
   const renameSession = useSessionStore((s) => s.renameSession)
   const lastUsedType = useSessionStore((s) => s.lastUsedType)
   const reorderScopedTab = useSessionStore((s) => s.reorderScopedTab)
@@ -96,7 +96,7 @@ export function SessionTabs(): ReactElement {
         cols: 80,
         rows: 24,
       })
-      addSession({
+      addSessionWithFocus({
         id: res.sessionId,
         workspaceId: activeWorkspaceId,
         type,
@@ -105,7 +105,7 @@ export function SessionTabs(): ReactElement {
         hasUnseenWaiting: false,
       })
     },
-    [activeWorkspaceId, addSession],
+    [activeWorkspaceId],
   )
 
   const sensors = useSensors(
@@ -159,7 +159,7 @@ export function SessionTabs(): ReactElement {
               cols: 80,
               rows: 24,
             })
-            addSession({
+            addSessionWithFocus({
               id: res.sessionId,
               workspaceId: activeWorkspaceId,
               type: target.type,
@@ -176,7 +176,7 @@ export function SessionTabs(): ReactElement {
           return
       }
     },
-    [sessions, activeWorkspaceId, setActive, setLayoutMode, startRename, addSession],
+    [sessions, activeWorkspaceId, setActive, setLayoutMode, startRename],
   )
 
   const wsHue = activeWorkspace?.color?.hue
@@ -323,7 +323,7 @@ function SortableTab({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id })
+  } = useSortable({ id, disabled: isRenaming })
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -347,6 +347,7 @@ function SortableTab({
       style={style}
       data-priority={status}
       data-most-urgent={isMostUrgent ? 'true' : undefined}
+      data-session-id={id}
       className={[
         'group flex shrink-0 items-center gap-2 rounded-sm border px-2 py-1 transition-transform',
         isActive
@@ -366,7 +367,6 @@ function SortableTab({
         onDoubleClick={onStartRename}
         className="flex items-center gap-2 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         aria-label={`${label} session, ${status}${isMostUrgent ? ', most urgent' : ''}`}
-        onPointerDown={(e) => e.stopPropagation()}
       >
         <StatusIcon status={status} size={12} />
         {isRenaming ? (
@@ -380,7 +380,6 @@ function SortableTab({
               if (e.key === 'Escape') onRenameCancel()
             }}
             onClick={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()}
             className="w-32 bg-bg px-1 py-0 font-mono text-xs outline-none ring-1 ring-accent"
             aria-label="Rename session"
           />
@@ -394,7 +393,6 @@ function SortableTab({
           e.stopPropagation()
           onClose()
         }}
-        onPointerDown={(e) => e.stopPropagation()}
         className="ml-1 text-muted hover:text-fg"
         aria-label="Close session"
       >

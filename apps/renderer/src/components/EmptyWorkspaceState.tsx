@@ -1,13 +1,12 @@
 import { useCallback, type ReactElement } from 'react'
 import { Terminal, Sparkles } from 'lucide-react'
 import { useWorkspaceStore } from '../state/workspaceStore'
-import { useSessionStore } from '../state/sessionStore'
+import { addSessionWithFocus } from '../lib/sessionFocus'
 import type { SessionType } from '@shared/session'
 
 export function EmptyWorkspaceState(): ReactElement {
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const workspaces = useWorkspaceStore((s) => s.workspaces)
-  const addSession = useSessionStore((s) => s.addSession)
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId)
 
   const spawn = useCallback(
@@ -19,7 +18,7 @@ export function EmptyWorkspaceState(): ReactElement {
         cols: 80,
         rows: 24,
       })
-      addSession({
+      addSessionWithFocus({
         id: res.sessionId,
         workspaceId: activeWorkspaceId,
         type,
@@ -28,7 +27,7 @@ export function EmptyWorkspaceState(): ReactElement {
         hasUnseenWaiting: false,
       })
     },
-    [activeWorkspaceId, addSession],
+    [activeWorkspaceId],
   )
 
   return (

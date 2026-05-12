@@ -4,6 +4,7 @@ import { Command } from 'cmdk'
 import { usePaletteStore } from '../state/paletteStore'
 import { useScopedOrder, useSessionStore } from '../state/sessionStore'
 import { useWorkspaceStore } from '../state/workspaceStore'
+import { addSessionWithFocus } from '../lib/sessionFocus'
 import type { SessionType } from '@shared/session'
 
 export function CommandPalette(): ReactElement | null {
@@ -16,7 +17,6 @@ export function CommandPalette(): ReactElement | null {
 
   const sessions = useSessionStore((s) => s.sessions)
   const setActiveSession = useSessionStore((s) => s.setActive)
-  const addSession = useSessionStore((s) => s.addSession)
   const activeId = useSessionStore((s) => s.activeId)
   const scopedOrder = useScopedOrder()
 
@@ -31,7 +31,7 @@ export function CommandPalette(): ReactElement | null {
         cols: 80,
         rows: 24,
       })
-      addSession({
+      addSessionWithFocus({
         id: res.sessionId,
         workspaceId: activeWorkspaceId,
         type,
@@ -40,7 +40,7 @@ export function CommandPalette(): ReactElement | null {
         hasUnseenWaiting: false,
       })
     },
-    [activeWorkspaceId, addSession],
+    [activeWorkspaceId],
   )
 
   useEffect(() => {

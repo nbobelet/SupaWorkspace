@@ -4,6 +4,8 @@ Multi-session terminal workspace manager for the `claude` CLI and shell sessions
 
 A workspace is a folder on disk. Sessions spawned inside a workspace inherit its scope (cwd + permissions). Switch between single / grid / split layouts without losing live terminal state.
 
+The canonical vocabulary — `Workspace`, `Session`, `Type` — is pinned in [docs/concepts.md](docs/concepts.md).
+
 ## Features
 
 - **Per-workspace tab scoping** — terminal tabs are filtered by the active workspace; no cross-workspace bleed.

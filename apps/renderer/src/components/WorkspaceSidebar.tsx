@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement } from 'react'
 import { toast } from 'sonner'
 import { Settings as SettingsIcon } from 'lucide-react'
 import { useWorkspaceStore } from '../state/workspaceStore'
@@ -6,6 +6,7 @@ import { useNotificationStore } from '../state/notificationStore'
 import { useWorkspaceWorstStatus } from '../state/sessionStore'
 import { useInlineRename } from '../hooks/useInlineRename'
 import { withViewTransition } from '../lib/viewTransition'
+import { clampMenuPosition, VIEWPORT_MARGIN } from '../lib/menuPosition'
 import { WorkspaceSettingsMenu } from './WorkspaceSettingsMenu'
 import { StatusIcon } from './StatusIcon'
 import type { Workspace } from '@shared/workspace'
@@ -16,12 +17,7 @@ interface ContextMenuState {
   y: number
 }
 
-interface WorkspaceSidebarProps {
-  onSettingsToggle: () => void
-  settingsOpen: boolean
-}
-
-export function WorkspaceSidebar({ onSettingsToggle, settingsOpen }: WorkspaceSidebarProps): ReactElement {
+export function WorkspaceSidebar(): ReactElement {
   const workspaces = useWorkspaceStore((s) => s.workspaces)
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const setWorkspaces = useWorkspaceStore((s) => s.setWorkspaces)
@@ -39,17 +35,12 @@ export function WorkspaceSidebar({ onSettingsToggle, settingsOpen }: WorkspaceSi
     upsertWorkspace(updated)
   })
 
+  // The settings popover keeps its blur-driven close. The right-click context menu
+  // owns its own dismissal (Esc / outside-click / scroll / blur) inside <ContextMenu>.
   useEffect(() => {
-    const close = (): void => {
-      setMenu(null)
-      setSettingsOpenFor(null)
-    }
-    window.addEventListener('click', close)
+    const close = (): void => setSettingsOpenFor(null)
     window.addEventListener('blur', close)
-    return () => {
-      window.removeEventListener('click', close)
-      window.removeEventListener('blur', close)
-    }
+    return () => window.removeEventListener('blur', close)
   }, [])
 
   useEffect(() => {
@@ -152,26 +143,11 @@ export function WorkspaceSidebar({ onSettingsToggle, settingsOpen }: WorkspaceSi
         ))}
       </ul>
 
-      <div className="border-t border-border px-3 py-2">
-        <button
-          type="button"
-          onClick={onSettingsToggle}
-          aria-pressed={settingsOpen}
-          className={[
-            'w-full rounded-sm border px-2 py-1 text-xs',
-            settingsOpen
-              ? 'border-accent bg-accent/10 text-accent'
-              : 'border-border bg-bg-elevated text-fg-subtle hover:border-border-strong',
-          ].join(' ')}
-        >
-          {settingsOpen ? 'Hide settings' : 'Show settings'}
-        </button>
-      </div>
-
       {menu && (
         <ContextMenu
           x={menu.x}
           y={menu.y}
+          onClose={() => setMenu(null)}
           items={[
             { label: 'Rename', onClick: () => startRenameFromMenu(menu.workspace) },
             { label: 'Reveal in explorer', onClick: () => void reveal(menu.workspace.id) },
@@ -309,14 +285,60 @@ function WorkspaceTile({
 interface ContextMenuProps {
   x: number
   y: number
+  onClose: () => void
   items: Array<{ label: string; onClick: () => void; danger?: boolean }>
 }
 
-function ContextMenu({ x, y, items }: ContextMenuProps): ReactElement {
+function ContextMenu({ x, y, onClose, items }: ContextMenuProps): ReactElement {
+  const ref = useRef<HTMLUListElement>(null)
+  const [position, setPosition] = useState<{ left: number; top: number }>({ left: x, top: y })
+
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    setPosition(
+      clampMenuPosition({
+        x,
+        y,
+        width: rect.width,
+        height: rect.height,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        margin: VIEWPORT_MARGIN,
+      }),
+    )
+  }, [x, y])
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') onClose()
+    }
+    const onPointerDown = (event: PointerEvent): void => {
+      const el = ref.current
+      if (!el) return
+      if (event.target instanceof Node && el.contains(event.target)) return
+      onClose()
+    }
+    const onScroll = (): void => onClose()
+    const onBlur = (): void => onClose()
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('pointerdown', onPointerDown, true)
+    window.addEventListener('scroll', onScroll, true)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('pointerdown', onPointerDown, true)
+      window.removeEventListener('scroll', onScroll, true)
+      window.removeEventListener('blur', onBlur)
+    }
+  }, [onClose])
+
   return (
     <ul
+      ref={ref}
       role="menu"
-      style={{ left: x, top: y }}
+      style={{ left: position.left, top: position.top }}
       className="fixed z-50 min-w-[160px] rounded-md border border-border bg-bg-elevated py-1 shadow-lg"
     >
       {items.map((item) => (
@@ -324,9 +346,9 @@ function ContextMenu({ x, y, items }: ContextMenuProps): ReactElement {
           <button
             type="button"
             role="menuitem"
-            onClick={(e) => {
-              e.stopPropagation()
+            onClick={() => {
               item.onClick()
+              onClose()
             }}
             className={[
               'block w-full px-3 py-1.5 text-left text-xs',

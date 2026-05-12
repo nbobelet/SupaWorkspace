@@ -191,4 +191,26 @@ describe('activeByWorkspace tracking', () => {
     expect(useSessionStore.getState().activeByWorkspace[ws1]).toBe('a')
     expect(useSessionStore.getState().activeByWorkspace[ws2]).toBe('c')
   })
+
+  it('does not jump activeId across workspaces when the last session of a workspace is removed', () => {
+    useSessionStore.getState().addSession(s('a', ws1))
+    useSessionStore.getState().addSession(s('b', ws2))
+    useSessionStore.getState().setActive('a')
+    useSessionStore.getState().removeSession('a')
+    // Only `b` (in ws2) remains, so the legacy global fallback is acceptable
+    // here — but the workspace entry for ws1 must be cleared so PaneMosaic
+    // renders <EmptyWorkspaceState> on switch back.
+    expect(useSessionStore.getState().activeByWorkspace[ws1]).toBeUndefined()
+  })
+
+  it('prefers a same-workspace sibling over an other-workspace session for activeId fallback', () => {
+    useSessionStore.getState().addSession(s('a', ws1))
+    useSessionStore.getState().addSession(s('b', ws2))
+    useSessionStore.getState().addSession(s('c', ws1))
+    useSessionStore.getState().setActive('a')
+    useSessionStore.getState().removeSession('a')
+    expect(useSessionStore.getState().activeId).toBe('c')
+    expect(useSessionStore.getState().activeByWorkspace[ws1]).toBe('c')
+    expect(useSessionStore.getState().activeByWorkspace[ws2]).toBe('b')
+  })
 })

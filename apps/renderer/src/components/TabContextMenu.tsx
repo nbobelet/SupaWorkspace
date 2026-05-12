@@ -1,5 +1,6 @@
-import { useEffect, useRef, type ReactElement } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from 'react'
 import { ArrowLeftRight, ArrowUpDown, Copy, Edit2, X } from 'lucide-react'
+import { clampMenuPosition, VIEWPORT_MARGIN } from '../lib/menuPosition'
 
 export type TabAction = 'split-h' | 'split-v' | 'rename' | 'duplicate' | 'close'
 
@@ -60,30 +61,47 @@ export function TabContextMenu({
   onClose,
 }: TabContextMenuProps): ReactElement {
   const ref = useRef<HTMLDivElement>(null)
+  // Render at the raw cursor coords first, then clamp once we know the menu size.
+  const [position, setPosition] = useState<{ left: number; top: number }>({ left: x, top: y })
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
-    const supportsPopover = 'popover' in HTMLElement.prototype
-    if (supportsPopover) {
-      try {
-        el.showPopover()
-      } catch {
-        // Already open or hidden parent — ignore.
-      }
-    }
-    const handleToggle = (event: Event): void => {
-      const newState = (event as Event & { newState?: string }).newState
-      if (newState === 'closed') onClose()
-    }
-    const handleKey = (event: KeyboardEvent): void => {
+    const rect = el.getBoundingClientRect()
+    setPosition(
+      clampMenuPosition({
+        x,
+        y,
+        width: rect.width,
+        height: rect.height,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        margin: VIEWPORT_MARGIN,
+      }),
+    )
+  }, [x, y])
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') onClose()
     }
-    el.addEventListener('toggle', handleToggle)
-    window.addEventListener('keydown', handleKey)
+    const onPointerDown = (event: PointerEvent): void => {
+      const el = ref.current
+      if (!el) return
+      if (event.target instanceof Node && el.contains(event.target)) return
+      onClose()
+    }
+    const onScroll = (): void => onClose()
+    const onBlur = (): void => onClose()
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('pointerdown', onPointerDown, true)
+    window.addEventListener('scroll', onScroll, true)
+    window.addEventListener('blur', onBlur)
     return () => {
-      el.removeEventListener('toggle', handleToggle)
-      window.removeEventListener('keydown', handleKey)
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('pointerdown', onPointerDown, true)
+      window.removeEventListener('scroll', onScroll, true)
+      window.removeEventListener('blur', onBlur)
     }
   }, [onClose])
 
@@ -92,10 +110,8 @@ export function TabContextMenu({
       ref={ref}
       role="menu"
       aria-label="Tab actions"
-      popover="auto"
-      style={{ left: x, top: y, margin: 0, inset: 'auto' }}
+      style={{ left: position.left, top: position.top }}
       className="fixed z-50 min-w-[200px] rounded-md border border-border bg-bg-elevated py-1 shadow-lg outline-none"
-      onClick={(event) => event.stopPropagation()}
       data-session-id={sessionId}
     >
       <ul className="flex flex-col">

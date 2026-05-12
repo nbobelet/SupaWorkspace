@@ -6,6 +6,7 @@ import { SearchAddon } from '@xterm/addon-search'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import { useSessionStore } from '../state/sessionStore'
+import { withViewTransition } from '../lib/viewTransition'
 
 const SCROLLBACK = 5000
 
@@ -53,11 +54,18 @@ function ensureGlobalListeners(): void {
 
   globalDataUnsub = window.ws.session.onData(({ sessionId, data }) => {
     const handle = handles.get(sessionId)
-    if (handle) handle.term.write(data)
+    if (!handle) return
+    handle.term.write(data, () => {
+      // Follow-output mode: always pin to the latest line as new data arrives.
+      // The user can still scroll back at will; the next write re-pins.
+      handle.term.scrollToBottom()
+    })
   })
 
   globalExitUnsub = window.ws.session.onExit(({ sessionId }) => {
-    useSessionStore.getState().removeSession(sessionId)
+    withViewTransition(() => {
+      useSessionStore.getState().removeSession(sessionId)
+    })
     disposeTerminal(sessionId)
   })
 

@@ -7,6 +7,8 @@ updated: 2026-05-11
 
 `$mod` = **Cmd** on macOS, **Ctrl** on Windows / Linux. Shortcuts are scoped to the active workspace and no-op while focus is in a text input or inside a terminal pane.
 
+See [concepts.md](./concepts.md) for the meaning of `Workspace`, `Session`, and `Type`.
+
 | Key                         | Action                                | Scope            |
 | --------------------------- | ------------------------------------- | ---------------- |
 | `$mod + K`                  | Open command palette                  | App              |
