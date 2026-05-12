@@ -1,10 +1,11 @@
 import { useEffect } from 'react'
-import { Terminal, type ITheme } from '@xterm/xterm'
+import { Terminal } from '@xterm/xterm'
 import type { FitAddon } from '@xterm/addon-fit'
 import { FitAddon as FitAddonCtor } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { toast } from 'sonner'
 import '@xterm/xterm/css/xterm.css'
+import { TerminalOptionsZ, type TerminalOptions } from '@shared/terminal/options'
 import { useSessionStore } from '../state/sessionStore'
 import {
   createFollowController,
@@ -12,31 +13,42 @@ import {
   type FollowOutputTarget,
 } from '../lib/followOutput'
 import { buildAddons } from '../terminal/buildAddons'
+import { buildTheme } from '../terminal/buildTheme'
+import { readDesignTokens, useDesignTokens, type DesignTokens } from './useDesignTokens'
 
-const SCROLLBACK = 5000
+// Module-load fail-fast validation of the constructor options. A malformed
+// defaults object surfaces as a sonner toast and re-throws to abort module
+// init — misconfig cannot silently propagate to terminal construction.
+function parseDefaults(): TerminalOptions {
+  try {
+    return TerminalOptionsZ.parse({
+      font: {
+        family: 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+        size: 13,
+        lineHeight: 1.2,
+      },
+      cursor: {
+        style: 'bar',
+        inactiveStyle: 'outline',
+        blink: true,
+      },
+      scrollback: 5000,
+      minimumContrastRatio: 4.5,
+      customGlyphs: true,
+      smoothScrollDuration: 125,
+    })
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err)
+    toast.error('Terminal misconfigured', { description: detail })
+    throw err
+  }
+}
 
-const xtermTheme: ITheme = {
-  background: '#0a0a0a',
-  foreground: '#e6e6e6',
-  cursor: '#4ade80',
-  cursorAccent: '#0a0a0a',
-  selectionBackground: '#3a3a3a',
-  black: '#0a0a0a',
-  red: '#f87171',
-  green: '#4ade80',
-  yellow: '#fbbf24',
-  blue: '#60a5fa',
-  magenta: '#c084fc',
-  cyan: '#67e8f9',
-  white: '#e6e6e6',
-  brightBlack: '#262626',
-  brightRed: '#fca5a5',
-  brightGreen: '#86efac',
-  brightYellow: '#fde68a',
-  brightBlue: '#93c5fd',
-  brightMagenta: '#d8b4fe',
-  brightCyan: '#a5f3fc',
-  brightWhite: '#ffffff',
+const DEFAULTS: TerminalOptions = parseDefaults()
+
+function prefersReducedMotion(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
 }
 
 const SCROLLBAR_STYLE_ID = 'supa-xterm-scrollbar'
@@ -119,15 +131,20 @@ function getOrCreateHandle(sessionId: string): TerminalHandle {
   const existing = handles.get(sessionId)
   if (existing) return existing
 
+  const reduce = prefersReducedMotion()
   const term = new Terminal({
-    fontFamily: 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-    fontSize: 13,
-    lineHeight: 1.2,
-    scrollback: SCROLLBACK,
-    cursorBlink: true,
-    cursorStyle: 'bar',
+    fontFamily: DEFAULTS.font.family,
+    fontSize: DEFAULTS.font.size,
+    lineHeight: DEFAULTS.font.lineHeight,
+    scrollback: DEFAULTS.scrollback,
+    cursorBlink: reduce ? false : DEFAULTS.cursor.blink,
+    cursorStyle: DEFAULTS.cursor.style,
+    cursorInactiveStyle: DEFAULTS.cursor.inactiveStyle,
+    minimumContrastRatio: DEFAULTS.minimumContrastRatio,
+    customGlyphs: DEFAULTS.customGlyphs,
+    smoothScrollDuration: reduce ? 0 : DEFAULTS.smoothScrollDuration,
     allowProposedApi: true,
-    theme: xtermTheme,
+    theme: buildTheme(readDesignTokens()),
   })
 
   const element = document.createElement('div')
@@ -213,6 +230,20 @@ function getOrCreateHandle(sessionId: string): TerminalHandle {
   return handle
 }
 
+function applyThemeToAll(tokens: DesignTokens): void {
+  const theme = buildTheme(tokens)
+  for (const handle of handles.values()) {
+    handle.term.options.theme = theme
+  }
+}
+
+function applyMotionPrefs(reduce: boolean): void {
+  for (const handle of handles.values()) {
+    handle.term.options.smoothScrollDuration = reduce ? 0 : DEFAULTS.smoothScrollDuration
+    handle.term.options.cursorBlink = reduce ? false : DEFAULTS.cursor.blink
+  }
+}
+
 export function focusSession(sessionId: string): void {
   const handle = handles.get(sessionId)
   if (!handle) return
@@ -232,13 +263,47 @@ function readTerminalBuffer(sessionId: string): string | null {
   return lines.join('\n')
 }
 
+function readTerminalThemeBg(sessionId: string): string | null {
+  const handle = handles.get(sessionId)
+  if (!handle) return null
+  const theme = handle.term.options.theme
+  return theme?.background ?? null
+}
+
 if (typeof window !== 'undefined') {
-  ;(window as unknown as { __readTerminal?: typeof readTerminalBuffer }).__readTerminal = readTerminalBuffer
+  const dbg = window as unknown as {
+    __readTerminal?: typeof readTerminalBuffer
+    __readTerminalThemeBg?: typeof readTerminalThemeBg
+  }
+  dbg.__readTerminal = readTerminalBuffer
+  dbg.__readTerminalThemeBg = readTerminalThemeBg
 }
 
 export function useTerminalSession(sessionId: string, container: HTMLElement | null): void {
+  const tokens = useDesignTokens()
+
   useEffect(() => {
     ensureGlobalListeners()
+  }, [])
+
+  // Live theme rebind: every time the design-token snapshot changes (CSS var
+  // mutation, MutationObserver tick), repaint every live terminal's theme
+  // in place — no remount.
+  useEffect(() => {
+    applyThemeToAll(tokens)
+  }, [tokens])
+
+  // Live `prefers-reduced-motion` binding: react to OS-level toggles, and
+  // update smoothScrollDuration + cursorBlink on every live handle.
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+    const mql = window.matchMedia('(prefers-reduced-motion: reduce)')
+    applyMotionPrefs(mql.matches)
+    const handler = (event: MediaQueryListEvent): void => {
+      applyMotionPrefs(event.matches)
+    }
+    mql.addEventListener('change', handler)
+    return () => mql.removeEventListener('change', handler)
   }, [])
 
   useEffect(() => {

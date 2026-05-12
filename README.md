@@ -104,6 +104,14 @@ The renderer is sandboxed: `contextIsolation: true`, `nodeIntegration: false`. T
 
 The terminal pane loads the full official xterm.js addon stack via the pure factory `apps/renderer/src/terminal/buildAddons.ts`, in this canonical order: WebGL, Ligatures, Web-Fonts, Unicode-Graphemes (v15), Image (SIXEL + iTerm IIP), Progress (OSC 9;4), Clipboard (OSC 52), Search, Serialize, Web-Links, Fit. The WebGL renderer registers an `onContextLoss` handler that disposes the addon — xterm then falls back to its built-in DOM renderer automatically, so terminal output is never lost.
 
+### Renderer — live design tokens → xterm theme
+
+Terminal colors are driven by CSS custom properties on `:root` (Tailwind 4 `@theme` block in `apps/renderer/src/styles/index.css`) — there are no hardcoded hex values in the terminal code path. `useDesignTokens()` in `apps/renderer/src/hooks/useDesignTokens.ts` reads the snapshot and re-emits via `MutationObserver` whenever `documentElement` attributes change, so flipping any `--color-*` or `--ansi-*` variable instantly re-themes every live terminal — no session remount. The pure mapping lives in `apps/renderer/src/terminal/buildTheme.ts`.
+
+Semantic tokens (`--color-bg`, `--color-bg-sunken`, `--color-bg-elevated`, `--color-fg`, `--color-fg-subtle`, `--color-muted`, `--color-accent`, `--color-running`, `--color-warn`, `--color-error`, `--color-border`, `--color-border-strong`) feed the surface and cursor colors. ANSI palette tokens (`--ansi-black`, `--ansi-red`, `--ansi-green`, `--ansi-yellow`, `--ansi-blue`, `--ansi-magenta`, `--ansi-cyan`, `--ansi-white`, and their `--ansi-bright-*` counterparts) feed the 16-color escape-sequence palette. `red` / `yellow` / `green` are wired to the semantic `error` / `warn` / `running` tokens so terminal exit-code and status output stay consistent with the rest of the UI.
+
+xterm constructor options are validated at module load with `TerminalOptionsZ` (`packages/shared/src/terminal/options.ts`) — a malformed config surfaces as a sonner toast and aborts module init. `prefers-reduced-motion: reduce` is honored live: `smoothScrollDuration` collapses to 0 and `cursorBlink` is disabled, reacting to OS-level toggles via a `MediaQueryList` listener.
+
 ## PTY backend
 
 We use `@homebridge/node-pty-prebuilt-multiarch` instead of upstream `node-pty` because it ships prebuilt N-API binaries for the common platforms. Electron loads the N-API binary directly — no ABI rebuild required when Electron's Node version changes.

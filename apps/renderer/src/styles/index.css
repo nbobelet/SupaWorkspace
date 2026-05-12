@@ -23,6 +23,30 @@
   --radius-lg: 0.5rem;
 }
 
+/*
+ * Terminal ANSI palette — consumed by buildTheme() in apps/renderer/src/terminal/buildTheme.ts
+ * via useDesignTokens(). Keep these in sync with semantic tokens above when restyling
+ * (e.g. --ansi-red / --ansi-yellow / --ansi-green should track --color-error / --color-warn / --color-accent).
+ */
+:root {
+  --ansi-black: #0a0a0a;
+  --ansi-red: #f87171;
+  --ansi-green: #4ade80;
+  --ansi-yellow: #fbbf24;
+  --ansi-blue: #60a5fa;
+  --ansi-magenta: #c084fc;
+  --ansi-cyan: #67e8f9;
+  --ansi-white: #e6e6e6;
+  --ansi-bright-black: #262626;
+  --ansi-bright-red: #fca5a5;
+  --ansi-bright-green: #86efac;
+  --ansi-bright-yellow: #fde68a;
+  --ansi-bright-blue: #93c5fd;
+  --ansi-bright-magenta: #d8b4fe;
+  --ansi-bright-cyan: #a5f3fc;
+  --ansi-bright-white: #ffffff;
+}
+
 html,
 body,
 #root {
