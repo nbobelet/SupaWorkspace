@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
-import { Terminal, Sparkles, Pencil } from 'lucide-react'
+import { Terminal, Sparkles } from 'lucide-react'
+import { TerminalTypeIcon } from './TerminalTypeIcon'
 import {
   DndContext,
   KeyboardSensor,
@@ -232,7 +233,7 @@ export function SessionTabs(): ReactElement {
                   key={id}
                   id={id}
                   label={s.label}
-                  autoTitled={s.autoTitled}
+                  type={s.type}
                   status={getSessionStatus(s.state)}
                   badgeCount={s.badgeCount}
                   isActive={id === activeId}
@@ -305,7 +306,7 @@ export function SessionTabs(): ReactElement {
 interface SortableTabProps {
   id: string
   label: string
-  autoTitled?: boolean
+  type: SessionType
   status: ReturnType<typeof getSessionStatus>
   badgeCount: number
   isActive: boolean
@@ -324,7 +325,7 @@ interface SortableTabProps {
 function SortableTab({
   id,
   label,
-  autoTitled,
+  type,
   status,
   badgeCount,
   isActive,
@@ -391,6 +392,7 @@ function SortableTab({
         className="flex items-center gap-2 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         aria-label={`${label} session, ${status}${isMostUrgent ? ', most urgent' : ''}`}
       >
+        <TerminalTypeIcon type={type} size={12} />
         <StatusIcon status={status} size={12} />
         {badgeCount > 0 && (
           <span
@@ -400,7 +402,7 @@ function SortableTab({
             {badgeCount > 9 ? '9+' : badgeCount}
           </span>
         )}
-        {isRenaming ? (
+        {isRenaming && (
           <input
             autoFocus
             value={renameValue}
@@ -414,17 +416,6 @@ function SortableTab({
             className="w-32 bg-bg px-1 py-0 font-mono text-xs outline-none ring-1 ring-accent"
             aria-label="Rename session"
           />
-        ) : (
-          <span className="flex items-center gap-0.5 font-mono">
-            {label}
-            {autoTitled && (
-              <Pencil
-                size={9}
-                className="ml-0.5 shrink-0 text-fg-subtle opacity-50"
-                aria-label="auto-titled — click tab to rename"
-              />
-            )}
-          </span>
         )}
       </button>
       <button

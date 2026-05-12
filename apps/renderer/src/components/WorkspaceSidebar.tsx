@@ -434,6 +434,23 @@ function WorkspaceTile({
                       >
                         {session.label}
                       </span>
+                      {session.hasUnseenAsking && (
+                        <span
+                          className="shrink-0 h-1.5 w-1.5 rounded-full bg-warn"
+                          aria-label="Waiting for input"
+                        />
+                      )}
+                      {session.hasUnseenEnding && (
+                        <span
+                          className="shrink-0 h-1.5 w-1.5 rounded-full bg-error"
+                          aria-label="Session ended"
+                        />
+                      )}
+                      {session.badgeCount > 0 && (
+                        <span className="rounded-full bg-accent px-1 text-[10px] font-mono leading-tight text-white">
+                          {session.badgeCount > 9 ? '9+' : session.badgeCount}
+                        </span>
+                      )}
                       <span className="shrink-0">
                         <StatusIcon status={status} size={11} />
                       </span>
