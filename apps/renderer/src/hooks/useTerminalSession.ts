@@ -120,6 +120,7 @@ function ensureGlobalListeners(): void {
   globalDataUnsub = window.ws.session.onData(({ sessionId, data }) => {
     const handle = handles.get(sessionId)
     if (!handle) return
+    handle.follow.beginWrite()
     handle.term.write(data, () => {
       handle.follow.onWrite()
     })
@@ -309,6 +310,30 @@ export function getMarkerRegistry(sessionId: string): MarkerRegistry | null {
  */
 export function focusTerminal(sessionId: string): void {
   handles.get(sessionId)?.term.focus()
+}
+
+/**
+ * Returns the current text selection inside the terminal, or an empty string
+ * when nothing is selected or the session is not yet mounted.
+ */
+export function getTerminalSelection(sessionId: string): string {
+  return handles.get(sessionId)?.term.getSelection() ?? ''
+}
+
+/**
+ * Writes text into the terminal's PTY input — mirrors the Ctrl+Shift+V
+ * keybinding path. No-op when the session is not mounted.
+ */
+export function terminalPaste(sessionId: string, text: string): void {
+  handles.get(sessionId)?.term.paste(text)
+}
+
+/**
+ * Selects all content in the terminal viewport — equivalent to Ctrl+A in
+ * a plain text view. No-op when the session is not mounted.
+ */
+export function terminalSelectAll(sessionId: string): void {
+  handles.get(sessionId)?.term.selectAll()
 }
 
 function applyThemeToAll(tokens: DesignTokens): void {

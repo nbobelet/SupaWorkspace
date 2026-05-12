@@ -21,6 +21,7 @@ export function isAtBottom(
 
 export interface FollowController {
   isFollowing(): boolean
+  beginWrite(): void
   onWrite(): void
   resync(): void
   subscribe(listener: () => void): () => void
@@ -39,6 +40,7 @@ export function createFollowController(
 ): FollowController {
   let following = true
   let disposed = false
+  let writeDepth = 0
   const listeners = new Set<() => void>()
 
   const notify = (): void => {
@@ -52,15 +54,22 @@ export function createFollowController(
   }
 
   const scrollDisposable = target.onScroll(() => {
-    if (disposed) return
+    if (disposed || writeDepth > 0) return
     setFollowing(isAtBottom(target, threshold))
   })
 
   return {
     isFollowing: () => following,
+    beginWrite: () => {
+      writeDepth++
+    },
     onWrite: () => {
       if (disposed) return
-      if (following) target.scrollToBottom()
+      writeDepth = Math.max(0, writeDepth - 1)
+      if (writeDepth > 0) return
+      const atBottom = isAtBottom(target, threshold)
+      setFollowing(atBottom)
+      if (atBottom) target.scrollToBottom()
     },
     resync: () => {
       if (disposed) return
