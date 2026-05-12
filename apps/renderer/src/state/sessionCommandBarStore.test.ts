@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useSessionCommandBarStore } from './sessionCommandBarStore'
+import { useSessionStore } from './sessionStore'
 
 const writeMock = vi.fn().mockResolvedValue(undefined)
 const submitMock = vi.fn().mockResolvedValue(undefined)
@@ -102,5 +103,115 @@ describe('sessionCommandBarStore — visibility', () => {
     expect(useSessionCommandBarStore.getState().visible).toBe(false)
     useSessionCommandBarStore.getState().toggleVisible()
     expect(useSessionCommandBarStore.getState().visible).toBe(true)
+  })
+})
+
+describe('sessionCommandBarStore — auto-title', () => {
+  const renameMock = vi.fn()
+
+  beforeEach(() => {
+    renameMock.mockReset()
+    ;(
+      globalThis as unknown as { window: { ws: { session: { rename: typeof renameMock } } } }
+    ).window.ws.session.rename = renameMock
+    useSessionStore.setState({ sessions: {} })
+  })
+
+  it('auto-titles a claude session with default label on first submit', async () => {
+    renameMock.mockResolvedValue({ sessionId: 'test-id-1', label: 'Build me a REST API' })
+    appendMock.mockResolvedValue({ entries: [] })
+    useSessionStore.setState({
+      sessions: {
+        'test-id-1': {
+          id: 'test-id-1',
+          workspaceId: 'ws-1',
+          type: 'claude',
+          label: 'claude',
+          state: 'idle',
+          exitCode: null,
+          hasUnseenAsking: false,
+          hasUnseenEnding: false,
+          badgeCount: 0,
+        },
+      },
+    })
+    useSessionCommandBarStore.setState({ value: 'build me a REST API' })
+    await useSessionCommandBarStore.getState().submit('test-id-1')
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    expect(renameMock).toHaveBeenCalledTimes(1)
+    expect(renameMock).toHaveBeenCalledWith({ sessionId: 'test-id-1', label: 'Build me a REST API' })
+  })
+
+  it('does not auto-title on second submit', async () => {
+    renameMock.mockResolvedValue({ sessionId: 'test-id-2', label: 'Build me a REST API' })
+    appendMock.mockResolvedValue({ entries: [] })
+    useSessionStore.setState({
+      sessions: {
+        'test-id-2': {
+          id: 'test-id-2',
+          workspaceId: 'ws-1',
+          type: 'claude',
+          label: 'claude',
+          state: 'idle',
+          exitCode: null,
+          hasUnseenAsking: false,
+          hasUnseenEnding: false,
+          badgeCount: 0,
+        },
+      },
+    })
+    useSessionCommandBarStore.setState({ value: 'build me a REST API' })
+    await useSessionCommandBarStore.getState().submit('test-id-2')
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    useSessionCommandBarStore.setState({ value: 'second submit' })
+    await useSessionCommandBarStore.getState().submit('test-id-2')
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    expect(renameMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not auto-title a shell session', async () => {
+    appendMock.mockResolvedValue({ entries: [] })
+    useSessionStore.setState({
+      sessions: {
+        'test-id-3': {
+          id: 'test-id-3',
+          workspaceId: 'ws-1',
+          type: 'shell',
+          label: 'shell',
+          state: 'idle',
+          exitCode: null,
+          hasUnseenAsking: false,
+          hasUnseenEnding: false,
+          badgeCount: 0,
+        },
+      },
+    })
+    useSessionCommandBarStore.setState({ value: 'ls -la' })
+    await useSessionCommandBarStore.getState().submit('test-id-3')
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    expect(renameMock).not.toHaveBeenCalled()
+  })
+
+  it('does not auto-title a claude session with a non-default label', async () => {
+    appendMock.mockResolvedValue({ entries: [] })
+    useSessionStore.setState({
+      sessions: {
+        'test-id-4': {
+          id: 'test-id-4',
+          workspaceId: 'ws-1',
+          type: 'claude',
+          label: 'my feature',
+          state: 'idle',
+          exitCode: null,
+          hasUnseenAsking: false,
+          hasUnseenEnding: false,
+          badgeCount: 0,
+        },
+      },
+    })
+    useSessionCommandBarStore.setState({ value: 'build me something' })
+    await useSessionCommandBarStore.getState().submit('test-id-4')
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    expect(renameMock).not.toHaveBeenCalled()
   })
 })

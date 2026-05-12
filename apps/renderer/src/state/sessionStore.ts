@@ -16,6 +16,7 @@ export interface RendererSession {
   badgeCount: number
   // Snapshot-restored placeholder: no PTY spawned yet. Cleared on activation.
   pendingSpawn?: boolean
+  autoTitled?: boolean
 }
 
 interface SessionStoreState {
@@ -40,6 +41,7 @@ interface SessionStoreState {
   bumpBadge: (id: string) => void
   setLastUsedType: (type: SessionType) => void
   renameSession: (id: string, label: string) => void
+  setAutoTitled: (id: string, value: boolean) => void
   reorderScopedTab: (workspaceId: string, from: number, to: number) => void
   materializeSession: (placeholderId: string, realId: string, label: string) => void
 }
@@ -172,8 +174,15 @@ export const useSessionStore = create<SessionStoreState>((set) => ({
       const existing = prev.sessions[id]
       if (!existing) return prev
       return {
-        sessions: { ...prev.sessions, [id]: { ...existing, label } },
+        sessions: { ...prev.sessions, [id]: { ...existing, label, autoTitled: false } },
       }
+    }),
+
+  setAutoTitled: (id, value) =>
+    set((prev) => {
+      const session = prev.sessions[id]
+      if (!session) return prev
+      return { sessions: { ...prev.sessions, [id]: { ...session, autoTitled: value } } }
     }),
 
   reorderScopedTab: (workspaceId, from, to) =>

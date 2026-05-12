@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
-import { Terminal, Sparkles } from 'lucide-react'
+import { Terminal, Sparkles, Pencil } from 'lucide-react'
 import {
   DndContext,
   KeyboardSensor,
@@ -232,6 +232,7 @@ export function SessionTabs(): ReactElement {
                   key={id}
                   id={id}
                   label={s.label}
+                  autoTitled={s.autoTitled}
                   status={getSessionStatus(s.state)}
                   badgeCount={s.badgeCount}
                   isActive={id === activeId}
@@ -304,6 +305,7 @@ export function SessionTabs(): ReactElement {
 interface SortableTabProps {
   id: string
   label: string
+  autoTitled?: boolean
   status: ReturnType<typeof getSessionStatus>
   badgeCount: number
   isActive: boolean
@@ -322,6 +324,7 @@ interface SortableTabProps {
 function SortableTab({
   id,
   label,
+  autoTitled,
   status,
   badgeCount,
   isActive,
@@ -412,7 +415,16 @@ function SortableTab({
             aria-label="Rename session"
           />
         ) : (
-          <span className="font-mono">{label}</span>
+          <span className="flex items-center gap-0.5 font-mono">
+            {label}
+            {autoTitled && (
+              <Pencil
+                size={9}
+                className="ml-0.5 shrink-0 text-fg-subtle opacity-50"
+                aria-label="auto-titled — click tab to rename"
+              />
+            )}
+          </span>
         )}
       </button>
       <button

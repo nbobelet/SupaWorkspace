@@ -1,6 +1,8 @@
 import { create } from 'zustand'
+import { generateSessionTitle } from '@shared/session-title'
 import { matchCmdGuardRule } from '../lib/cmdGuard'
 import { useCmdGuardStore } from './cmdGuardStore'
+import { useSessionStore } from './sessionStore'
 
 interface SessionCommandBarState {
   value: string
@@ -18,6 +20,8 @@ interface SessionCommandBarState {
   historyPrev: () => void
   historyNext: () => void
 }
+
+const autoTitledSessions = new Set<string>()
 
 export const useSessionCommandBarStore = create<SessionCommandBarState>((set, get) => ({
   value: '',
@@ -50,6 +54,21 @@ export const useSessionCommandBarStore = create<SessionCommandBarState>((set, ge
       if (!granted) return
     }
     await window.ws.session.submit({ sessionId, data: value })
+    // fire-and-forget auto-title on first claude submit
+    void (async () => {
+      try {
+        if (autoTitledSessions.has(sessionId)) return
+        const session = useSessionStore.getState().sessions[sessionId]
+        if (!session || session.type !== 'claude' || session.label !== 'claude') return
+        autoTitledSessions.add(sessionId)
+        const title = generateSessionTitle(value)
+        const renamed = await window.ws.session.rename({ sessionId, label: title })
+        useSessionStore.getState().renameSession(renamed.sessionId, renamed.label)
+        useSessionStore.getState().setAutoTitled(renamed.sessionId, true)
+      } catch {
+        // silent — auto-title is best-effort
+      }
+    })()
     const res = await window.ws.inputHistory.append({ entry: value })
     set({ value: '', history: res.entries, historyIndex: null })
   },
