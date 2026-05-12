@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement } from 'react'
 import { toast } from 'sonner'
-import { Settings as SettingsIcon } from 'lucide-react'
+import { Settings as SettingsIcon, ChevronDown, ChevronRight, X } from 'lucide-react'
 import {
   DndContext,
   KeyboardSensor,
@@ -19,12 +19,16 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { useWorkspaceStore } from '../state/workspaceStore'
 import { useNotificationStore } from '../state/notificationStore'
-import { useWorkspaceWorstStatus } from '../state/sessionStore'
+import { useSessionStore, useWorkspaceWorstStatus, scopeOrder } from '../state/sessionStore'
+import { getSessionStatus } from '../state/sessionStatus'
 import { useInlineRename } from '../hooks/useInlineRename'
 import { withViewTransition } from '../lib/viewTransition'
 import { clampMenuPosition, VIEWPORT_MARGIN } from '../lib/menuPosition'
 import { WorkspaceSettingsMenu } from './WorkspaceSettingsMenu'
 import { StatusIcon } from './StatusIcon'
+import { TerminalTypeIcon } from './TerminalTypeIcon'
+import { activateSession } from '../lib/sessionFocus'
+import { closeSession } from '../lib/closeSession'
 import type { Workspace } from '@shared/workspace'
 
 interface ContextMenuState {
@@ -63,6 +67,32 @@ export function WorkspaceSidebar(): ReactElement {
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   const [settingsOpenFor, setSettingsOpenFor] = useState<string | null>(null)
   const setColor = useWorkspaceStore((s) => s.setColor)
+
+  // Accordion expanded state — active workspace starts expanded
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(
+    () => new Set(activeWorkspaceId ? [activeWorkspaceId] : []),
+  )
+
+  // When the active workspace changes, auto-expand it
+  useEffect(() => {
+    if (activeWorkspaceId) {
+      setExpandedIds((prev) => {
+        if (prev.has(activeWorkspaceId)) return prev
+        const next = new Set(prev)
+        next.add(activeWorkspaceId)
+        return next
+      })
+    }
+  }, [activeWorkspaceId])
+
+  const toggleExpand = useCallback((id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
 
   const rename = useInlineRename(async (id, newName) => {
     const updated = await window.ws.workspace.rename(id, newName)
@@ -158,6 +188,8 @@ export function WorkspaceSidebar(): ReactElement {
                 key={w.id}
                 workspace={w}
                 isActive={w.id === activeWorkspaceId}
+                isExpanded={expandedIds.has(w.id)}
+                onToggleExpand={() => toggleExpand(w.id)}
                 isRenaming={rename.isRenaming(w.id)}
                 renameValue={rename.renameValue}
                 onRenameChange={rename.setRenameValue}
@@ -200,6 +232,8 @@ export function WorkspaceSidebar(): ReactElement {
 interface WorkspaceTileProps {
   workspace: Workspace
   isActive: boolean
+  isExpanded: boolean
+  onToggleExpand: () => void
   isRenaming: boolean
   renameValue: string
   onRenameChange: (value: string) => void
@@ -217,6 +251,8 @@ interface WorkspaceTileProps {
 function WorkspaceTile({
   workspace: w,
   isActive,
+  isExpanded,
+  onToggleExpand,
   isRenaming,
   renameValue,
   onRenameChange,
@@ -231,6 +267,10 @@ function WorkspaceTile({
   onDelete,
 }: WorkspaceTileProps): ReactElement {
   const worstStatus = useWorkspaceWorstStatus(w.id)
+  const sessions = useSessionStore((s) => s.sessions)
+  const order = useSessionStore((s) => s.order)
+  const activeSessionId = useSessionStore((s) => s.activeId)
+  const sessionIds = scopeOrder(order, sessions, w.id)
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: w.id,
@@ -262,6 +302,22 @@ function WorkspaceTile({
           isActive ? 'bg-bg-elevated text-fg' : 'text-fg-subtle hover:bg-bg-elevated/60',
         ].join(' ')}
       >
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleExpand()
+          }}
+          aria-label={isExpanded ? 'Collapse session list' : 'Expand session list'}
+          aria-expanded={isExpanded}
+          className="mt-1 shrink-0 text-muted hover:text-fg"
+        >
+          {isExpanded ? (
+            <ChevronDown size={12} aria-hidden="true" />
+          ) : (
+            <ChevronRight size={12} aria-hidden="true" />
+          )}
+        </button>
         <button
           type="button"
           onClick={() => !isRenaming && onActivate()}
@@ -333,6 +389,73 @@ function WorkspaceTile({
           onClose={onSettingsToggle}
         />
       )}
+
+      {/* Session accordion */}
+      <div
+        className={[
+          'overflow-hidden transition-[max-height] duration-200 ease-in-out',
+          isExpanded ? 'max-h-96' : 'max-h-0',
+        ].join(' ')}
+        aria-hidden={!isExpanded}
+      >
+        {sessionIds.length === 0 ? (
+          <p className="px-8 py-1 text-[11px] text-muted">No sessions</p>
+        ) : (
+          <ul className="pb-1">
+            {sessionIds.map((sid) => {
+              const session = sessions[sid]
+              if (!session) return null
+              const status = getSessionStatus(session.state, session.exitCode)
+              const isActiveSession = sid === activeSessionId
+              return (
+                <li
+                  key={sid}
+                  className="group/session"
+                >
+                  <div
+                    className={[
+                      'flex w-full items-center gap-1.5 pl-8 pr-2 py-1 text-left text-xs',
+                      isActiveSession
+                        ? 'bg-bg-elevated/80 text-fg'
+                        : 'text-fg-subtle hover:bg-bg-elevated/40',
+                    ].join(' ')}
+                  >
+                    <button
+                      type="button"
+                      className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                      onClick={() => void activateSession(sid)}
+                    >
+                      <span className="shrink-0 text-muted">
+                        <TerminalTypeIcon type={session.type} size={11} />
+                      </span>
+                      <span
+                        className="min-w-0 flex-1 truncate"
+                        title={session.label}
+                      >
+                        {session.label}
+                      </span>
+                      <span className="shrink-0">
+                        <StatusIcon status={status} size={11} />
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        closeSession(sid)
+                      }}
+                      aria-label={`Close session ${session.label}`}
+                      className="shrink-0 rounded-sm p-0.5 text-muted opacity-0 hover:text-fg group-hover/session:opacity-100 focus-visible:opacity-100"
+                    >
+                      <X size={10} aria-hidden="true" />
+                    </button>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
     </li>
   )
 }
