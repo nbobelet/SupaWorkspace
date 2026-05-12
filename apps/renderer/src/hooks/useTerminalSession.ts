@@ -4,19 +4,23 @@ import type { FitAddon } from '@xterm/addon-fit'
 import { FitAddon as FitAddonCtor } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import { WebglAddon } from '@xterm/addon-webgl'
+import { ProgressAddon } from '@xterm/addon-progress'
+import { ClipboardAddon } from '@xterm/addon-clipboard'
 import { toast } from 'sonner'
 import '@xterm/xterm/css/xterm.css'
 import { TerminalOptionsZ, type TerminalOptions } from '@shared/terminal/options'
 import { useSessionStore } from '../state/sessionStore'
+import { usePaneProgressStore, type ProgressEntry } from '../state/paneProgressStore'
 import {
   createFollowController,
   type FollowController,
   type FollowOutputTarget,
 } from '../lib/followOutput'
-import { buildAddons } from '../terminal/buildAddons'
+import { buildAddons, buildClipboardAddon } from '../terminal/buildAddons'
 import { buildTheme } from '../terminal/buildTheme'
 import { createMarkerRegistry, type MarkerRegistry } from '../terminal/markers'
 import { readDesignTokens, useDesignTokens, type DesignTokens } from './useDesignTokens'
+import { useSettings } from './useSettings'
 
 // Module-load fail-fast validation of the constructor options. A malformed
 // defaults object surfaces as a sonner toast and re-throws to abort module
@@ -84,6 +88,9 @@ interface TerminalHandle {
   search: SearchAddon | null
   element: HTMLDivElement
   webgl: WebglAddon | null
+  progress: ProgressAddon | null
+  progressDisposable: { dispose: () => void } | null
+  clipboard: ClipboardAddon | null
   inputDisposable: { dispose: () => void }
   follow: FollowController
   markerRegistry: MarkerRegistry
@@ -169,11 +176,18 @@ function getOrCreateHandle(sessionId: string): TerminalHandle {
   term.open(element)
 
   // Build all addons via the pure factory. Order is canonical (see
-  // `buildAddons.ts` doc-comment).
-  const addons = buildAddons()
+  // `buildAddons.ts` doc-comment). Image budgets come from the validated
+  // `TerminalOptions`; clipboard policy is hot-reloaded by an effect
+  // below once `useSettings()` resolves, so we keep the default policy
+  // here at construction time.
+  const addons = buildAddons({
+    image: DEFAULTS.image,
+  })
   let webgl: WebglAddon | null = null
   let fit: FitAddon | null = null
   let search: SearchAddon | null = null
+  let progress: ProgressAddon | null = null
+  let clipboard: ClipboardAddon | null = null
 
   for (const addon of addons) {
     try {
@@ -191,6 +205,12 @@ function getOrCreateHandle(sessionId: string): TerminalHandle {
       if (addon instanceof SearchAddon) {
         search = addon
       }
+      if (addon instanceof ProgressAddon) {
+        progress = addon
+      }
+      if (addon instanceof ClipboardAddon) {
+        clipboard = addon
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       const addonName = addon.constructor.name
@@ -198,6 +218,17 @@ function getOrCreateHandle(sessionId: string): TerminalHandle {
         description: message,
       })
     }
+  }
+
+  // Mirror ProgressAddon's `onChange` events into the per-pane Zustand
+  // atom so the header pill renders cheaply (subscribe-by-selector). The
+  // disposable is held on the handle and released by `disposeTerminal`.
+  let progressDisposable: { dispose: () => void } | null = null
+  if (progress) {
+    progressDisposable = progress.onChange((entry) => {
+      const safeEntry: ProgressEntry = { state: entry.state, value: entry.value }
+      usePaneProgressStore.getState().set(sessionId, safeEntry)
+    })
   }
 
   // WebGL renderer can lose its context (driver reset, GPU hot-plug, tab
@@ -242,6 +273,9 @@ function getOrCreateHandle(sessionId: string): TerminalHandle {
     search,
     element,
     webgl,
+    progress,
+    progressDisposable,
+    clipboard,
     inputDisposable,
     follow,
     markerRegistry,
@@ -328,10 +362,42 @@ if (typeof window !== 'undefined') {
 
 export function useTerminalSession(sessionId: string, container: HTMLElement | null): void {
   const tokens = useDesignTokens()
+  const settings = useSettings()
 
   useEffect(() => {
     ensureGlobalListeners()
   }, [])
+
+  // Hot-reload the ClipboardAddon when the user toggles `allowOscWrite`
+  // or `allowOscRead`. Disposing + re-loading ONLY the ClipboardAddon is
+  // safe — every other addon (WebGL, Search, Markers, Fit, ...) stays
+  // mounted on the same Terminal instance, no flicker, no scrollback loss.
+  useEffect(() => {
+    if (!settings) return
+    const handle = handles.get(sessionId)
+    if (!handle) return
+    if (handle.clipboard) {
+      try {
+        handle.clipboard.dispose()
+      } catch {
+        // already disposed
+      }
+    }
+    const fresh = buildClipboardAddon({
+      allowOscWrite: settings.clipboard.allowOscWrite,
+      allowOscRead: settings.clipboard.allowOscRead,
+    })
+    try {
+      handle.term.loadAddon(fresh)
+      handle.clipboard = fresh
+    } catch {
+      // Loading shouldn't fail post-mount (the underlying parser hooks
+      // are already activated by the original addon's `activate`). Even
+      // if it does, the terminal stays usable — we just lose the new
+      // policy until the next toggle. No remount is appropriate here.
+      handle.clipboard = null
+    }
+  }, [sessionId, settings])
 
   // Live theme rebind: every time the design-token snapshot changes (CSS var
   // mutation, MutationObserver tick), repaint every live terminal's theme
@@ -421,6 +487,19 @@ export function disposeTerminal(sessionId: string): void {
   } catch {
     // already disposed
   }
+  // Release the ProgressAddon's `onChange` subscription. The addon itself
+  // is owned by xterm — `term.dispose()` below tears it down for us.
+  if (handle.progressDisposable) {
+    try {
+      handle.progressDisposable.dispose()
+    } catch {
+      // already disposed
+    }
+    handle.progressDisposable = null
+  }
+  // Drop the per-session progress entry so the pill doesn't outlive the
+  // PTY whose state it described.
+  usePaneProgressStore.getState().clear(sessionId)
   // WebGL may have already disposed itself on context loss — guard the
   // call so we don't double-dispose.
   if (handle.webgl) {

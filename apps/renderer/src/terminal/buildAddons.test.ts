@@ -44,7 +44,15 @@ class ImageAddonStub extends StubAddon {
   }
 }
 class ProgressAddonStub extends StubAddon {}
-class ClipboardAddonStub extends StubAddon {}
+class ClipboardAddonStub extends StubAddon {
+  public readonly _base64: unknown
+  public readonly _provider: unknown
+  constructor(base64?: unknown, provider?: unknown) {
+    super(base64, provider)
+    this._base64 = base64
+    this._provider = provider
+  }
+}
 class SearchAddonStub extends StubAddon {}
 class SerializeAddonStub extends StubAddon {}
 class WebLinksAddonStub extends StubAddon {}
@@ -108,21 +116,29 @@ describe('buildAddons', () => {
     expect(image._opts.enableSizeReports).toBe(false)
   })
 
-  it('passes no image opts when none are provided', () => {
+  it('applies conservative defaults when no image opts are provided', () => {
     const addons = buildAddons()
     const image = addons[4]
     if (!(image instanceof ImageAddonStub)) throw new Error('unreachable')
-    expect(image._opts.sixelSizeLimit).toBeUndefined()
-    expect(image._opts.pixelLimit).toBeUndefined()
-    expect(image._opts.enableSizeReports).toBeUndefined()
+    expect(image._opts.sixelSizeLimit).toBe(8 * 1024 * 1024)
+    expect(image._opts.pixelLimit).toBe(8000 * 8000)
+    expect(image._opts.enableSizeReports).toBe(true)
   })
 
-  it('accepts webFonts.fontFamily and clipboard options without throwing', () => {
+  it('accepts webFonts.fontFamily and clipboard policy without throwing', () => {
     expect(() =>
       buildAddons({
         webFonts: { fontFamily: ['JetBrains Mono', 'Fira Code'] },
-        clipboard: { selectionToBeCopiedOSC: false, readData: false },
+        clipboard: { allowOscWrite: false, allowOscRead: false },
       }),
     ).not.toThrow()
+  })
+
+  it('builds a ClipboardAddon with a custom provider that honors the policy', () => {
+    const addons = buildAddons({ clipboard: { allowOscWrite: true, allowOscRead: false } })
+    const clipboard = addons[6]
+    if (!(clipboard instanceof ClipboardAddonStub)) throw new Error('unreachable')
+    expect(clipboard._provider).toBeTypeOf('object')
+    expect(clipboard._provider).not.toBeNull()
   })
 })

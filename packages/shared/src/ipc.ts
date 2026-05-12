@@ -39,6 +39,8 @@ export const IpcChannel = {
   BugReportCreate: 'bug-report:create',
   BugReportList: 'bug-report:list',
   BugReportRevealDir: 'bug-report:reveal-dir',
+  SettingsGet: 'settings:get',
+  SettingsUpdate: 'settings:update',
 } as const
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel]
 
@@ -275,3 +277,40 @@ export const InputHistoryAppendResponse = z.object({
   entries: z.array(z.string()),
 })
 export type InputHistoryAppendResponse = z.infer<typeof InputHistoryAppendResponse>
+
+/**
+ * App-wide settings — currently only governs the clipboard / progress
+ * cross-cutting concerns introduced in QW4. New keys go here as the
+ * settings UI grows; the schema is validated on every `settings:get` and
+ * every partial-merge in `settings:update`.
+ *
+ * Conservative defaults — see `SettingsStore`:
+ *  - `allowOscWrite: true`  (OSC 52 paste-from-PTY enabled, parity with iTerm)
+ *  - `allowOscRead: false`  (PTY-side clipboard read disabled; exfiltration vector)
+ *  - `notifyOnLongProgressComplete: false` (off by default; reserved for a
+ *    future Notifier wave, not yet wired)
+ */
+export const SettingsZ = z.object({
+  clipboard: z.object({
+    allowOscWrite: z.boolean(),
+    allowOscRead: z.boolean(),
+    notifyOnLongProgressComplete: z.boolean(),
+  }),
+})
+export type Settings = z.infer<typeof SettingsZ>
+
+/**
+ * Partial-update payload for `settings:update`. The handler deep-merges
+ * the partial onto the current settings, validates the result with
+ * `SettingsZ`, and returns the full new settings object.
+ */
+export const SettingsUpdatePayloadZ = z.object({
+  clipboard: z
+    .object({
+      allowOscWrite: z.boolean().optional(),
+      allowOscRead: z.boolean().optional(),
+      notifyOnLongProgressComplete: z.boolean().optional(),
+    })
+    .optional(),
+})
+export type SettingsUpdatePayload = z.infer<typeof SettingsUpdatePayloadZ>
