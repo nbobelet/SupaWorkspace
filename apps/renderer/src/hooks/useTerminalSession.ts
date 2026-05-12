@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Terminal } from '@xterm/xterm'
 import type { FitAddon } from '@xterm/addon-fit'
 import { FitAddon as FitAddonCtor } from '@xterm/addon-fit'
+import { SearchAddon } from '@xterm/addon-search'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { toast } from 'sonner'
 import '@xterm/xterm/css/xterm.css'
@@ -14,6 +15,7 @@ import {
 } from '../lib/followOutput'
 import { buildAddons } from '../terminal/buildAddons'
 import { buildTheme } from '../terminal/buildTheme'
+import { createMarkerRegistry, type MarkerRegistry } from '../terminal/markers'
 import { readDesignTokens, useDesignTokens, type DesignTokens } from './useDesignTokens'
 
 // Module-load fail-fast validation of the constructor options. A malformed
@@ -79,10 +81,12 @@ function ensureScrollbarStyles(): void {
 interface TerminalHandle {
   term: Terminal
   fit: FitAddon
+  search: SearchAddon | null
   element: HTMLDivElement
   webgl: WebglAddon | null
   inputDisposable: { dispose: () => void }
   follow: FollowController
+  markerRegistry: MarkerRegistry
   rafScheduled: boolean
 }
 
@@ -144,6 +148,11 @@ function getOrCreateHandle(sessionId: string): TerminalHandle {
     customGlyphs: DEFAULTS.customGlyphs,
     smoothScrollDuration: reduce ? 0 : DEFAULTS.smoothScrollDuration,
     allowProposedApi: true,
+    // Width in pixels of the overview-ruler column rendered to the right
+    // of the viewport. xterm 5.5 uses the `overviewRulerWidth` option
+    // (number), not a nested `{ width }` object; the ruler is hidden when
+    // unset. Required for `MarkerRegistry` decorations to surface.
+    overviewRulerWidth: 10,
     theme: buildTheme(readDesignTokens()),
   })
 
@@ -164,6 +173,7 @@ function getOrCreateHandle(sessionId: string): TerminalHandle {
   const addons = buildAddons()
   let webgl: WebglAddon | null = null
   let fit: FitAddon | null = null
+  let search: SearchAddon | null = null
 
   for (const addon of addons) {
     try {
@@ -177,6 +187,9 @@ function getOrCreateHandle(sessionId: string): TerminalHandle {
       }
       if (addon instanceof FitAddonCtor) {
         fit = addon
+      }
+      if (addon instanceof SearchAddon) {
+        search = addon
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -217,17 +230,51 @@ function getOrCreateHandle(sessionId: string): TerminalHandle {
 
   const follow = createFollowController(toFollowTarget(term))
 
+  // Per-session marker registry — scans newly-completed lines for errors,
+  // detects prompt-reappear boundaries, and owns every IDecoration it
+  // creates. Disposed in `disposeTerminal`. `readDesignTokens` is passed
+  // as a live getter so new markers always pick up the freshest snapshot.
+  const markerRegistry = createMarkerRegistry(term, readDesignTokens, sessionId)
+
   const handle: TerminalHandle = {
     term,
     fit,
+    search,
     element,
     webgl,
     inputDisposable,
     follow,
+    markerRegistry,
     rafScheduled: false,
   }
   handles.set(sessionId, handle)
   return handle
+}
+
+/**
+ * Public lookup for the per-session SearchAddon, used by the `SearchBar`
+ * component without granting it access to the rest of the handle. Returns
+ * null if the session has not been mounted yet, or if the addon failed to
+ * load (xterm's addon-load path is best-effort — see `buildAddons`).
+ */
+export function getSearchAddon(sessionId: string): SearchAddon | null {
+  return handles.get(sessionId)?.search ?? null
+}
+
+/**
+ * Public lookup for the per-session MarkerRegistry, used by the SearchBar
+ * to derive its search-decoration options from the live token snapshot.
+ */
+export function getMarkerRegistry(sessionId: string): MarkerRegistry | null {
+  return handles.get(sessionId)?.markerRegistry ?? null
+}
+
+/**
+ * Refocus the inner xterm helper textarea — used by the SearchBar's
+ * Escape handler so typing immediately resumes in the terminal.
+ */
+export function focusTerminal(sessionId: string): void {
+  handles.get(sessionId)?.term.focus()
 }
 
 function applyThemeToAll(tokens: DesignTokens): void {
@@ -366,6 +413,14 @@ export function disposeTerminal(sessionId: string): void {
   if (!handle) return
   handle.follow.dispose()
   handle.inputDisposable.dispose()
+  // Dispose marker registry BEFORE the terminal — registry's IDecorations
+  // and IMarkers must release their xterm-side bookkeeping while the
+  // terminal is still alive.
+  try {
+    handle.markerRegistry.dispose()
+  } catch {
+    // already disposed
+  }
   // WebGL may have already disposed itself on context loss — guard the
   // call so we don't double-dispose.
   if (handle.webgl) {

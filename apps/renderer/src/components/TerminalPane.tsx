@@ -2,7 +2,9 @@ import { useRef, useState, type CSSProperties, type ReactElement } from 'react'
 import { useTerminalSession } from '../hooks/useTerminalSession'
 import { useSessionStore } from '../state/sessionStore'
 import { useWorkspaceStore } from '../state/workspaceStore'
+import { useSearchBarStore } from '../state/searchBarStore'
 import { activateSession } from '../lib/sessionFocus'
+import { SearchBar } from './SearchBar'
 
 interface TerminalPaneProps {
   sessionId: string
@@ -41,6 +43,7 @@ export function TerminalPane({ sessionId, isActive, onFocus }: TerminalPaneProps
     session ? s.workspaces.find((w) => w.id === session.workspaceId) : null,
   )
   const isPending = session?.pendingSpawn === true
+  const isSearchOpen = useSearchBarStore((s) => s.openBySession[sessionId] === true)
 
   // Only mount xterm once the PTY has actually been spawned. Placeholder tabs
   // restored from the snapshot stay inert until the user activates them.
@@ -63,7 +66,7 @@ export function TerminalPane({ sessionId, isActive, onFocus }: TerminalPaneProps
       data-session-id={sessionId}
       data-state={state}
       className={[
-        'flex h-full w-full flex-col overflow-hidden rounded-md border bg-bg-elevated',
+        'relative flex h-full w-full flex-col overflow-hidden rounded-md border bg-bg-elevated',
         hue !== undefined ? 'border-l-4' : '',
         isActive ? 'border-accent ring-1 ring-accent/40' : 'border-border',
         // xterm-always-focused invariant: when the inner xterm has DOM focus,
@@ -99,6 +102,12 @@ export function TerminalPane({ sessionId, isActive, onFocus }: TerminalPaneProps
         </button>
       ) : (
         <div ref={setContainer} className="flex-1 overflow-hidden" />
+      )}
+      {isSearchOpen && !isPending && (
+        <SearchBar
+          sessionId={sessionId}
+          onClose={() => useSearchBarStore.getState().close(sessionId)}
+        />
       )}
     </div>
   )
