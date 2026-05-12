@@ -18,6 +18,7 @@ import { useNotificationStore } from './state/notificationStore'
 import { usePaletteStore } from './state/paletteStore'
 import { useSessionCommandBarStore } from './state/sessionCommandBarStore'
 import { useCmdGuardStore } from './state/cmdGuardStore'
+import { useSearchBarStore } from './state/searchBarStore'
 import { useKeybindings } from './hooks/useKeybindings'
 import { focusSession } from './hooks/useTerminalSession'
 import { withViewTransition } from './lib/viewTransition'
@@ -271,6 +272,13 @@ export function App(): ReactElement {
     focusSessionCommandBar,
     focusWorkspaceCommandBar,
     toggleAppSettings,
+    // Cmd+F / Ctrl+F — toggles the floating SearchBar for the active
+    // session. The keybinding's editable-target guard already documents
+    // the `.xterm` exception so the binding fires while the user is
+    // typing in the terminal.
+    toggleSearchBar: () => {
+      if (activeId) useSearchBarStore.getState().toggle(activeId)
+    },
   })
 
   return (

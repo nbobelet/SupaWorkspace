@@ -22,6 +22,7 @@ export interface KeybindingHandlers {
   focusSessionCommandBar: () => void
   focusWorkspaceCommandBar: () => void
   toggleAppSettings: () => void
+  toggleSearchBar: () => void
 }
 
 // Bar-toggle, palette, settings and rename handlers keep focus where they
@@ -34,6 +35,7 @@ const FOCUS_EXEMPT: ReadonlySet<keyof KeybindingHandlers> = new Set<keyof Keybin
   'toggleAppSettings',
   'renameActiveTab',
   'renameActiveWorkspace',
+  'toggleSearchBar',
 ])
 
 function isEditableTarget(el: EventTarget | null): boolean {
@@ -45,13 +47,38 @@ function isEditableTarget(el: EventTarget | null): boolean {
   return false
 }
 
+// Same editable-guard as `isEditableTarget`, MINUS the `.xterm` clause.
+// Used only by the SearchBar toggle (Cmd+F / Ctrl+F): the user-visible
+// contract is "press the chord while typing in the terminal -> SearchBar
+// opens", so xterm-focus must NOT block the binding. Every other field
+// (input/textarea/select/contenteditable) still suppresses the chord —
+// users typing in a rename field or the bug-report dialog get the
+// browser's native find.
+//
+// Subtle point: xterm.js captures keystrokes through `.xterm-helper-textarea`,
+// a real `<textarea>` element. The standard `INPUT/TEXTAREA/SELECT` check
+// would therefore block Cmd+F when the user is typing in the terminal —
+// the exact case the brief tells us to allow. We special-case it by
+// checking the `.xterm` ancestor BEFORE the tag check.
+function isEditableTargetExceptXterm(el: EventTarget | null): boolean {
+  if (!(el instanceof HTMLElement)) return false
+  if (el.closest('.xterm')) return false
+  const tag = el.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
+  if (el.isContentEditable) return true
+  return false
+}
+
 function guardWithFocusRestore(
   name: keyof KeybindingHandlers,
   handler: () => void,
 ): (event: KeyboardEvent) => void {
   const restoreFocus = !FOCUS_EXEMPT.has(name)
+  // Documented exception: the SearchBar toggle must fire even when xterm
+  // has focus (cf. `isEditableTargetExceptXterm`).
+  const guard = name === 'toggleSearchBar' ? isEditableTargetExceptXterm : isEditableTarget
   return (event) => {
-    if (isEditableTarget(event.target)) return
+    if (guard(event.target)) return
     event.preventDefault()
     handler()
     if (restoreFocus) returnFocusToActiveSession()
@@ -84,12 +111,17 @@ export function useKeybindings(handlers: KeybindingHandlers): void {
       '$mod+Shift+-': guardWithFocusRestore('splitHorizontal', handlers.splitHorizontal),
       '$mod+i': guardWithFocusRestore('focusSessionCommandBar', handlers.focusSessionCommandBar),
       '$mod+,': guardWithFocusRestore('toggleAppSettings', handlers.toggleAppSettings),
+      '$mod+f': guardWithFocusRestore('toggleSearchBar', handlers.toggleSearchBar),
     }
     for (let n = 1; n <= 9; n += 1) {
       bindings[`$mod+Digit${n}`] = guardWithFocusRestore('jumpToSession', () =>
         handlers.jumpToSession(n - 1),
       )
     }
-    return tinykeys(window, bindings)
+    // Capture-phase listener so the chord fires before xterm.js's
+    // textarea-level keydown handler (which prevents default for keys it
+    // captures). Without capture, Ctrl+F inside an xterm-focused pane
+    // would never reach our toggle.
+    return tinykeys(window, bindings, { capture: true })
   }, [handlers])
 }
