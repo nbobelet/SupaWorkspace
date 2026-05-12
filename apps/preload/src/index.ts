@@ -26,6 +26,8 @@ import type {
   InputHistoryGetResponse,
   InputHistoryAppendRequest,
   InputHistoryAppendResponse,
+  Settings,
+  SettingsUpdatePayload,
 } from '@shared/ipc'
 import type { SessionSnapshotListResponse, SessionSnapshotClearResponse } from '@shared/snapshot'
 import type {
@@ -132,6 +134,11 @@ const api = {
       ipcRenderer.invoke(IpcChannel.BugReportCreate, req),
     list: (): Promise<BugReportListResponse> => ipcRenderer.invoke(IpcChannel.BugReportList),
     revealDir: (): Promise<void> => ipcRenderer.invoke(IpcChannel.BugReportRevealDir),
+  },
+  settings: {
+    get: (): Promise<Settings> => ipcRenderer.invoke(IpcChannel.SettingsGet),
+    update: (payload: SettingsUpdatePayload): Promise<Settings> =>
+      ipcRenderer.invoke(IpcChannel.SettingsUpdate, payload),
   },
 }
 

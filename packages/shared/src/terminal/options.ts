@@ -23,6 +23,18 @@ export const TerminalOptionsZ = z.object({
   minimumContrastRatio: z.number().min(1),
   customGlyphs: z.boolean(),
   smoothScrollDuration: z.number().int().min(0),
+  /**
+   * Optional ImageAddon budget overrides. Validated at the renderer boundary
+   * so a malformed config object surfaces as a sonner toast rather than
+   * silently mis-configuring the SIXEL / iTerm-IIP decoder.
+   */
+  image: z
+    .object({
+      sizeLimit: z.number().int().min(1).optional(),
+      pixelLimit: z.number().int().min(1).optional(),
+      enableSizeReports: z.boolean().optional(),
+    })
+    .optional(),
 })
 
 export type TerminalOptions = z.infer<typeof TerminalOptionsZ>

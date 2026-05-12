@@ -175,6 +175,20 @@ Not configured. TODO before public distribution:
 - Windows: a code-signing certificate + `CSC_LINK` / `CSC_KEY_PASSWORD` env vars
 - macOS: an Apple Developer ID + notarization via `APPLE_ID` / `APPLE_APP_SPECIFIC_PASSWORD`
 
+## Supported escape sequences
+
+The renderer loads the full xterm.js addon stack — every terminal pane in SupaWorkspace recognises these protocol extensions out of the box.
+
+| Sequence | Source | What it does | Addon | Default |
+|---|---|---|---|---|
+| Sixel (`DCS q ... ST`) | chafa, viu, ImageMagick | inline raster | @xterm/addon-image | enabled |
+| iTerm2 inline image (`OSC 1337;File=...`) | imgcat | inline raster | @xterm/addon-image | enabled |
+| OSC 9;4 progress (`ESC ] 9 ; 4 ; <state> ; <value> BEL`) | npm, cargo, winget, apt (recent) | pane progress pill | @xterm/addon-progress | enabled |
+| OSC 52 clipboard write (`ESC ] 52 ; c ; <base64> BEL`) | tmux, vim, nvim yank | copy to host | @xterm/addon-clipboard | enabled |
+| OSC 52 clipboard read | same | host-to-CLI paste | @xterm/addon-clipboard | disabled (security) |
+
+The OSC 52 read direction is gated by `clipboard.allowOscRead` in app settings (`settings:get` / `settings:update` IPC). Toggling either clipboard flag hot-reloads only the `ClipboardAddon` — the terminal stays mounted, no scrollback loss.
+
 ## License
 
 UNLICENSED — private project.

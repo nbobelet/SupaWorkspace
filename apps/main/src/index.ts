@@ -10,6 +10,7 @@ import { InputHistoryStore } from './input-history/InputHistoryStore'
 import { SessionSnapshotStore } from './sessions-snapshot/SessionSnapshotStore'
 import { CmdGuardStore } from './cmd-guard/CmdGuardStore'
 import { BugReportStore } from './bug-report/BugReportStore'
+import { SettingsStore } from './settings/SettingsStore'
 import { registerSessionIpc } from './ipc/session'
 import { registerWorkspaceIpc } from './ipc/workspace'
 import { registerPermissionsIpc } from './ipc/permissions'
@@ -18,6 +19,7 @@ import { registerInputHistoryIpc } from './ipc/inputHistory'
 import { registerSessionSnapshotIpc } from './ipc/sessionSnapshot'
 import { registerCmdGuardIpc } from './ipc/cmdGuard'
 import { registerBugReportIpc } from './ipc/bugReport'
+import { registerSettingsIpc } from './ipc/settings'
 import { IpcChannel } from '@shared/ipc'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -119,6 +121,7 @@ void app.whenReady().then(async () => {
     userDataDir: app.getPath('userData'),
     openPath: (p) => shell.openPath(p),
   })
+  const settingsStore = new SettingsStore()
   const notifier = new Notifier(getMainWindow, workspaceStore)
   const sessionManager = new SessionManager({
     onData: (sessionId, data) => broadcast(IpcChannel.SessionData, { sessionId, data }),
@@ -150,6 +153,7 @@ void app.whenReady().then(async () => {
   registerSessionSnapshotIpc({ snapshotStore })
   registerCmdGuardIpc({ cmdGuardStore })
   registerBugReportIpc({ bugReportStore })
+  registerSettingsIpc({ settingsStore })
 
   createWindow()
 
