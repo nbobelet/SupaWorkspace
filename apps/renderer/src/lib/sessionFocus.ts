@@ -78,7 +78,17 @@ export function addSessionWithFocus(
 
   // Wait for React to commit the new tab into the DOM before focusing / scrolling.
   requestAnimationFrame(() => {
-    focusSession(session.id)
+    // Don't steal focus from an editable element the user is actively using
+    // (e.g. the SessionCommandBar textarea). xterm's own canvas/textarea is
+    // exempt — focus theft from xterm is intentional when spawning.
+    const active = document.activeElement
+    const isEditableFocused =
+      active instanceof HTMLElement &&
+      !active.closest('.xterm') &&
+      (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)
+    if (!isEditableFocused) {
+      focusSession(session.id)
+    }
     const el = document.querySelector(`[data-session-id="${CSS.escape(session.id)}"]`)
     if (el instanceof HTMLElement) {
       el.scrollIntoView({ behavior: scrollBehavior, inline: 'nearest', block: 'nearest' })

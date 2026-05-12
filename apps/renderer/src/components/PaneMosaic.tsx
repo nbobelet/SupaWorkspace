@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactElement } from 'react'
 import { Mosaic, MosaicWindow, type MosaicNode } from 'react-mosaic-component'
 import 'react-mosaic-component/react-mosaic-component.css'
 import { TerminalPane } from './TerminalPane'
-import { useScopedOrder, useSessionStore } from '../state/sessionStore'
+import { useScopedOrder, useSessionStore, type RendererSession } from '../state/sessionStore'
 import { useWorkspaceStore } from '../state/workspaceStore'
 import { useActiveLayoutMode } from '../state/layoutStore'
 import { activateSession } from '../lib/sessionFocus'
@@ -59,19 +59,32 @@ export function PaneMosaic(): ReactElement {
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const scopedOrder = useScopedOrder()
 
+  const pendingSessions = useMemo<RendererSession[]>(
+    () =>
+      scopedOrder
+        .map((id) => sessions[id])
+        .filter((s): s is RendererSession => s?.pendingSpawn === true),
+    [scopedOrder, sessions],
+  )
+
+  const activeScopedOrder = useMemo(
+    () => scopedOrder.filter((id) => !sessions[id]?.pendingSpawn),
+    [scopedOrder, sessions],
+  )
+
   const computedNode = useMemo(() => {
     switch (mode) {
       case 'single':
-        return buildSingleNode(scopedOrder, activeId)
+        return buildSingleNode(activeScopedOrder, activeId)
       case 'split-horizontal':
-        return buildSplitNode(scopedOrder.slice(0, 2), 'row')
+        return buildSplitNode(activeScopedOrder.slice(0, 2), 'row')
       case 'split-vertical':
-        return buildSplitNode(scopedOrder.slice(0, 2), 'column')
+        return buildSplitNode(activeScopedOrder.slice(0, 2), 'column')
       case 'grid':
       default:
-        return buildGridNode(scopedOrder)
+        return buildGridNode(activeScopedOrder)
     }
-  }, [mode, scopedOrder, activeId])
+  }, [mode, activeScopedOrder, activeId])
 
   const [node, setNode] = useState<MosaicNode<string> | null>(computedNode)
 
@@ -83,8 +96,12 @@ export function PaneMosaic(): ReactElement {
     return <WelcomePane />
   }
 
-  if (activeWorkspaceId && scopedOrder.length === 0) {
-    return <EmptyWorkspaceState />
+  if (activeWorkspaceId && activeScopedOrder.length === 0) {
+    return (
+      <EmptyWorkspaceState
+        pendingSessions={pendingSessions.length > 0 ? pendingSessions : undefined}
+      />
+    )
   }
 
   if (mode === 'cascade') {

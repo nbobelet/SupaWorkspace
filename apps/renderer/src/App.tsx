@@ -20,7 +20,8 @@ import { useSessionCommandBarStore } from './state/sessionCommandBarStore'
 import { useCmdGuardStore } from './state/cmdGuardStore'
 import { useSearchBarStore } from './state/searchBarStore'
 import { useKeybindings } from './hooks/useKeybindings'
-import { focusSession } from './hooks/useTerminalSession'
+import { focusSession, getTerminalSelection, terminalPaste } from './hooks/useTerminalSession'
+import { showCopiedToast } from './components/ClipboardToast'
 import { withViewTransition } from './lib/viewTransition'
 import { addSessionWithFocus, activateSession } from './lib/sessionFocus'
 import { closeSession } from './lib/closeSession'
@@ -278,6 +279,16 @@ export function App(): ReactElement {
     // typing in the terminal.
     toggleSearchBar: () => {
       if (activeId) useSearchBarStore.getState().toggle(activeId)
+    },
+    copyFromTerminal: () => {
+      if (!activeId) return
+      const text = getTerminalSelection(activeId)
+      if (!text) return
+      void navigator.clipboard.writeText(text).then(() => showCopiedToast())
+    },
+    pasteToTerminal: () => {
+      if (!activeId) return
+      void navigator.clipboard.readText().then((text) => terminalPaste(activeId, text))
     },
   })
 

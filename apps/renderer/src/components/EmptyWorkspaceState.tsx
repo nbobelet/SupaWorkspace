@@ -2,10 +2,15 @@ import { useCallback, type ReactElement } from 'react'
 import { Terminal, Sparkles, FolderPlus } from 'lucide-react'
 import { useWorkspaceStore } from '../state/workspaceStore'
 import { useOpenWorkspace } from '../hooks/useOpenWorkspace'
-import { addSessionWithFocus } from '../lib/sessionFocus'
+import { addSessionWithFocus, activateSession } from '../lib/sessionFocus'
 import type { SessionType } from '@shared/session'
+import type { RendererSession } from '../state/sessionStore'
 
-export function EmptyWorkspaceState(): ReactElement {
+interface EmptyWorkspaceStateProps {
+  pendingSessions?: RendererSession[]
+}
+
+export function EmptyWorkspaceState({ pendingSessions }: EmptyWorkspaceStateProps): ReactElement {
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const workspaces = useWorkspaceStore((s) => s.workspaces)
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId)
@@ -31,15 +36,44 @@ export function EmptyWorkspaceState(): ReactElement {
     [activeWorkspaceId],
   )
 
+  const hasPending = pendingSessions && pendingSessions.length > 0
+
   return (
     <div className="grid h-full place-items-center px-6">
       <div className="flex w-full max-w-sm flex-col items-center gap-5 text-center">
-        <h1 className="text-base font-semibold tracking-tight">No session yet</h1>
+        <h1 className="text-base font-semibold tracking-tight">
+          {hasPending ? 'No active session' : 'No session yet'}
+        </h1>
         <p className="text-xs text-muted">
           {activeWorkspace
             ? `Spawn a terminal or Claude session in "${activeWorkspace.name}".`
             : 'Spawn a terminal or Claude session.'}
         </p>
+
+        {hasPending && (
+          <section className="flex w-full flex-col gap-1.5 rounded-md border border-border bg-bg-elevated p-3" aria-labelledby="restore-heading">
+            <h2 id="restore-heading" className="mb-0.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Restore from previous session
+            </h2>
+            {pendingSessions.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => void activateSession(s.id)}
+                className="flex w-full items-center gap-2 rounded border border-border bg-bg px-3 py-1.5 text-left text-xs text-fg hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              >
+                {s.type === 'claude' ? (
+                  <Sparkles size={12} aria-hidden="true" className="shrink-0 text-accent" />
+                ) : (
+                  <Terminal size={12} aria-hidden="true" className="shrink-0 text-muted" />
+                )}
+                <span className="flex-1 truncate">{s.label}</span>
+                <span className="font-mono text-[10px] uppercase text-muted">{s.type}</span>
+              </button>
+            ))}
+          </section>
+        )}
+
         <div className="flex w-full flex-col gap-2 sm:flex-row">
           <button
             type="button"
