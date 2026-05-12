@@ -98,6 +98,10 @@ IPC channels are defined and validated with Zod in `packages/shared/src/ipc.ts`.
 
 The renderer is sandboxed: `contextIsolation: true`, `nodeIntegration: false`. The preload exposes a typed `window.ws.*` surface only.
 
+### Renderer — xterm.js addons
+
+The terminal pane loads the full official xterm.js addon stack via the pure factory `apps/renderer/src/terminal/buildAddons.ts`, in this canonical order: WebGL, Ligatures, Web-Fonts, Unicode-Graphemes (v15), Image (SIXEL + iTerm IIP), Progress (OSC 9;4), Clipboard (OSC 52), Search, Serialize, Web-Links, Fit. The WebGL renderer registers an `onContextLoss` handler that disposes the addon — xterm then falls back to its built-in DOM renderer automatically, so terminal output is never lost.
+
 ## PTY backend
 
 We use `@homebridge/node-pty-prebuilt-multiarch` instead of upstream `node-pty` because it ships prebuilt N-API binaries for the common platforms. Electron loads the N-API binary directly — no ABI rebuild required when Electron's Node version changes.
