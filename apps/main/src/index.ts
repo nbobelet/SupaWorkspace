@@ -6,10 +6,16 @@ import { SessionManager } from './pty/SessionManager'
 import { WorkspaceStore } from './workspace/WorkspaceStore'
 import { Notifier } from './notifications/Notifier'
 import { NotesStore } from './notes/NotesStore'
+import { InputHistoryStore } from './input-history/InputHistoryStore'
+import { SessionSnapshotStore } from './sessions-snapshot/SessionSnapshotStore'
+import { CmdGuardStore } from './cmd-guard/CmdGuardStore'
 import { registerSessionIpc } from './ipc/session'
 import { registerWorkspaceIpc } from './ipc/workspace'
 import { registerPermissionsIpc } from './ipc/permissions'
 import { registerNotesIpc } from './ipc/notes'
+import { registerInputHistoryIpc } from './ipc/inputHistory'
+import { registerSessionSnapshotIpc } from './ipc/sessionSnapshot'
+import { registerCmdGuardIpc } from './ipc/cmdGuard'
 import { IpcChannel } from '@shared/ipc'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -79,6 +85,9 @@ void app.whenReady().then(async () => {
 
   const workspaceStore = new WorkspaceStore()
   const notesStore = new NotesStore()
+  const inputHistoryStore = new InputHistoryStore()
+  const snapshotStore = new SessionSnapshotStore()
+  const cmdGuardStore = new CmdGuardStore()
   const notifier = new Notifier(getMainWindow, workspaceStore)
   const sessionManager = new SessionManager({
     onData: (sessionId, data) => broadcast(IpcChannel.SessionData, { sessionId, data }),
@@ -89,6 +98,11 @@ void app.whenReady().then(async () => {
     onState: (sessionId, state) => {
       broadcast(IpcChannel.SessionState, { sessionId, state })
       notifier.handleStateChange(sessionId, state)
+    },
+    onSessionsChanged: (configs) => {
+      snapshotStore.save(
+        configs.map((c) => ({ workspaceId: c.workspaceId, type: c.type, label: c.label })),
+      )
     },
   })
 
@@ -101,6 +115,9 @@ void app.whenReady().then(async () => {
   registerWorkspaceIpc({ workspaceStore, sessionManager, getMainWindow })
   registerPermissionsIpc({ workspaceStore, getMainWindow, notifier })
   registerNotesIpc({ notesStore })
+  registerInputHistoryIpc({ inputHistoryStore })
+  registerSessionSnapshotIpc({ snapshotStore })
+  registerCmdGuardIpc({ cmdGuardStore })
 
   createWindow()
 
@@ -111,6 +128,7 @@ void app.whenReady().then(async () => {
   })
 
   app.on('before-quit', () => {
+    snapshotStore.lock()
     sessionManager.killAll()
   })
 })

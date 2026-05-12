@@ -22,7 +22,16 @@ import type {
   WorkspaceReadClaudeMdResponse,
   WorkspaceReadSettingsResponse,
   ClaudeSettings,
+  InputHistoryGetResponse,
+  InputHistoryAppendRequest,
+  InputHistoryAppendResponse,
 } from '@shared/ipc'
+import type { SessionSnapshotListResponse, SessionSnapshotClearResponse } from '@shared/snapshot'
+import type {
+  CmdGuardGetResponse,
+  CmdGuardSetRulesRequest,
+  CmdGuardAppendAuditRequest,
+} from '@shared/cmdGuard'
 import { IpcChannel } from '@shared/ipc'
 import type { NotificationPushEvent } from '@shared/notification'
 import type { Workspace } from '@shared/workspace'
@@ -91,6 +100,24 @@ const api = {
     get: (): Promise<NotesGetResponse> => ipcRenderer.invoke(IpcChannel.NotesGet),
     set: (content: string): Promise<void> =>
       ipcRenderer.invoke(IpcChannel.NotesSet, { content }),
+  },
+  inputHistory: {
+    get: (): Promise<InputHistoryGetResponse> => ipcRenderer.invoke(IpcChannel.InputHistoryGet),
+    append: (req: InputHistoryAppendRequest): Promise<InputHistoryAppendResponse> =>
+      ipcRenderer.invoke(IpcChannel.InputHistoryAppend, req),
+  },
+  sessionSnapshot: {
+    list: (): Promise<SessionSnapshotListResponse> =>
+      ipcRenderer.invoke(IpcChannel.SessionSnapshotList),
+    clear: (): Promise<SessionSnapshotClearResponse> =>
+      ipcRenderer.invoke(IpcChannel.SessionSnapshotClear),
+  },
+  cmdGuard: {
+    get: (): Promise<CmdGuardGetResponse> => ipcRenderer.invoke(IpcChannel.CmdGuardGet),
+    setRules: (req: CmdGuardSetRulesRequest): Promise<void> =>
+      ipcRenderer.invoke(IpcChannel.CmdGuardSetRules, req),
+    appendAudit: (req: CmdGuardAppendAuditRequest): Promise<CmdGuardGetResponse> =>
+      ipcRenderer.invoke(IpcChannel.CmdGuardAppendAudit, req),
   },
 }
 

@@ -8,6 +8,7 @@ export interface SessionManagerEvents {
   onData: (sessionId: string, data: string) => void
   onExit: (sessionId: string, exitCode: number, signal?: number) => void
   onState: (sessionId: string, state: SessionState) => void
+  onSessionsChanged?: (configs: SessionConfig[]) => void
 }
 
 export interface ResolvedSession {
@@ -72,8 +73,10 @@ export class SessionManager {
       this.events.onExit(sessionId, exitCode, signal)
       this.stateDetector.unregister(sessionId)
       this.sessions.delete(sessionId)
+      this.events.onSessionsChanged?.(this.list())
     })
 
+    this.events.onSessionsChanged?.(this.list())
     return config
   }
 
@@ -139,6 +142,7 @@ export class SessionManager {
     const session = this.sessions.get(sessionId)
     if (!session) return undefined
     session.config = { ...session.config, label }
+    this.events.onSessionsChanged?.(this.list())
     return session.config
   }
 

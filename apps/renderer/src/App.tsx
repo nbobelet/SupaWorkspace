@@ -6,11 +6,15 @@ import { SessionTabs } from './components/SessionTabs'
 import { LayoutSwitcher } from './components/LayoutSwitcher'
 import { SettingsPanel } from './components/settings/SettingsPanel'
 import { CommandPalette } from './components/CommandPalette'
+import { CommandInputBar } from './components/CommandInputBar'
+import { CmdGuardModal } from './components/CmdGuardModal'
 import { useScopedOrder, useSessionStore } from './state/sessionStore'
 import { useWorkspaceStore } from './state/workspaceStore'
 import { useLayoutStore } from './state/layoutStore'
 import { useNotificationStore } from './state/notificationStore'
 import { usePaletteStore } from './state/paletteStore'
+import { useInputBarStore } from './state/inputBarStore'
+import { useCmdGuardStore } from './state/cmdGuardStore'
 import { useKeybindings } from './hooks/useKeybindings'
 import { focusSession } from './hooks/useTerminalSession'
 import { withViewTransition } from './lib/viewTransition'
@@ -35,12 +39,47 @@ export function App(): ReactElement {
 
   const pushNotif = useNotificationStore((s) => s.push)
   const togglePalette = usePaletteStore((s) => s.toggle)
+  const toggleInputBar = useInputBarStore((s) => s.toggleVisible)
+  const loadCmdGuard = useCmdGuardStore((s) => s.load)
 
   const [settingsOpen, setSettingsOpen] = useState(false)
 
   useEffect(() => {
-    void window.ws.workspace.list().then((res) => setWorkspaces(res.workspaces))
-  }, [setWorkspaces])
+    let cancelled = false
+    void (async () => {
+      const wsRes = await window.ws.workspace.list()
+      if (cancelled) return
+      setWorkspaces(wsRes.workspaces)
+      const validIds = new Set(wsRes.workspaces.map((w) => w.id))
+      const snapRes = await window.ws.sessionSnapshot.list()
+      if (cancelled) return
+      for (const entry of snapRes.envelope.entries) {
+        if (!validIds.has(entry.workspaceId)) continue
+        try {
+          const spawned = await window.ws.session.spawn({
+            workspaceId: entry.workspaceId,
+            type: entry.type,
+            cols: 80,
+            rows: 24,
+            label: entry.label,
+          })
+          addSession({
+            id: spawned.sessionId,
+            workspaceId: entry.workspaceId,
+            type: entry.type,
+            label: spawned.label,
+            state: 'idle',
+            hasUnseenWaiting: false,
+          })
+        } catch (err) {
+          console.warn('[snapshot] failed to restore session', entry, err)
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [setWorkspaces, addSession])
 
   useEffect(() => {
     const unsubscribe = window.ws.session.onFocus(({ sessionId, workspaceId }) => {
@@ -101,6 +140,10 @@ export function App(): ReactElement {
     })
     return unsubscribe
   }, [pushNotif, setActive, setActiveWorkspace])
+
+  useEffect(() => {
+    void loadCmdGuard()
+  }, [loadCmdGuard])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -192,6 +235,7 @@ export function App(): ReactElement {
       window.dispatchEvent(new CustomEvent('workspace:rename-active'))
     },
     togglePalette,
+    toggleInputBar,
     cycleLayout: cycleMode,
     reorderActiveTabLeft: () => reorderActiveTab(-1),
     reorderActiveTabRight: () => reorderActiveTab(1),
@@ -211,8 +255,9 @@ export function App(): ReactElement {
         <div className="flex-1 overflow-hidden">
           <PaneMosaic />
         </div>
+        <CommandInputBar />
         <footer className="flex items-center justify-between border-t border-border bg-bg-sunken px-3 py-1 text-[10px] text-muted">
-          <span>Ctrl+K palette · Ctrl+1–9 focus · Ctrl+\ layout · Ctrl+T new {lastUsedType}</span>
+          <span>Ctrl+K palette · Ctrl+/ input bar · Ctrl+1–9 focus · Ctrl+\ layout · Ctrl+T new {lastUsedType}</span>
           <span>
             {scopedOrder.length} session{scopedOrder.length === 1 ? '' : 's'}
           </span>
@@ -224,6 +269,7 @@ export function App(): ReactElement {
       )}
 
       <CommandPalette />
+      <CmdGuardModal />
       <Toaster
         position="top-right"
         visibleToasts={3}

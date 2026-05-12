@@ -28,6 +28,13 @@ export const IpcChannel = {
   NotifPush: 'notif:push',
   NotesGet: 'notes:get',
   NotesSet: 'notes:set',
+  InputHistoryGet: 'input-history:get',
+  InputHistoryAppend: 'input-history:append',
+  SessionSnapshotList: 'session-snapshot:list',
+  SessionSnapshotClear: 'session-snapshot:clear',
+  CmdGuardGet: 'cmd-guard:get',
+  CmdGuardSetRules: 'cmd-guard:set-rules',
+  CmdGuardAppendAudit: 'cmd-guard:append-audit',
 } as const
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel]
 
@@ -227,3 +234,18 @@ export const NotesSetRequest = z.object({
   content: z.string().max(1_000_000),
 })
 export type NotesSetRequest = z.infer<typeof NotesSetRequest>
+
+export const InputHistoryGetResponse = z.object({
+  entries: z.array(z.string()),
+})
+export type InputHistoryGetResponse = z.infer<typeof InputHistoryGetResponse>
+
+export const InputHistoryAppendRequest = z.object({
+  entry: z.string().max(10_000),
+})
+export type InputHistoryAppendRequest = z.infer<typeof InputHistoryAppendRequest>
+
+export const InputHistoryAppendResponse = z.object({
+  entries: z.array(z.string()),
+})
+export type InputHistoryAppendResponse = z.infer<typeof InputHistoryAppendResponse>

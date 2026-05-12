@@ -12,6 +12,7 @@ export interface KeybindingHandlers {
   renameActiveTab: () => void
   renameActiveWorkspace: () => void
   togglePalette: () => void
+  toggleInputBar: () => void
   cycleLayout: () => void
   reorderActiveTabLeft: () => void
   reorderActiveTabRight: () => void
@@ -48,6 +49,7 @@ export function useKeybindings(handlers: KeybindingHandlers): void {
       '$mod+r': guard(handlers.renameActiveTab),
       F2: guard(handlers.renameActiveWorkspace),
       '$mod+k': guard(handlers.togglePalette),
+      '$mod+/': guard(handlers.toggleInputBar),
       '$mod+\\': guard(handlers.cycleLayout),
       '$mod+Shift+ArrowLeft': guard(handlers.reorderActiveTabLeft),
       '$mod+Shift+ArrowRight': guard(handlers.reorderActiveTabRight),
