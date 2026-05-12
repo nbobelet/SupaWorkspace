@@ -23,6 +23,8 @@ export interface KeybindingHandlers {
   focusWorkspaceCommandBar: () => void
   toggleAppSettings: () => void
   toggleSearchBar: () => void
+  copyFromTerminal?: () => void
+  pasteToTerminal?: () => void
 }
 
 // Bar-toggle, palette, settings and rename handlers keep focus where they
@@ -36,6 +38,8 @@ const FOCUS_EXEMPT: ReadonlySet<keyof KeybindingHandlers> = new Set<keyof Keybin
   'renameActiveTab',
   'renameActiveWorkspace',
   'toggleSearchBar',
+  'copyFromTerminal',
+  'pasteToTerminal',
 ])
 
 function isEditableTarget(el: EventTarget | null): boolean {
@@ -74,9 +78,15 @@ function guardWithFocusRestore(
   handler: () => void,
 ): (event: KeyboardEvent) => void {
   const restoreFocus = !FOCUS_EXEMPT.has(name)
-  // Documented exception: the SearchBar toggle must fire even when xterm
-  // has focus (cf. `isEditableTargetExceptXterm`).
-  const guard = name === 'toggleSearchBar' ? isEditableTargetExceptXterm : isEditableTarget
+  // Documented exceptions: SearchBar toggle and clipboard handlers must fire even
+  // when xterm has focus (cf. `isEditableTargetExceptXterm`). Clipboard chords
+  // use Ctrl+Shift+C/V (terminal convention) to avoid conflicts with SIGINT.
+  const xtermAllowed: ReadonlySet<keyof KeybindingHandlers> = new Set([
+    'toggleSearchBar',
+    'copyFromTerminal',
+    'pasteToTerminal',
+  ])
+  const guard = xtermAllowed.has(name) ? isEditableTargetExceptXterm : isEditableTarget
   return (event) => {
     if (guard(event.target)) return
     event.preventDefault()
@@ -112,6 +122,14 @@ export function useKeybindings(handlers: KeybindingHandlers): void {
       '$mod+i': guardWithFocusRestore('focusSessionCommandBar', handlers.focusSessionCommandBar),
       '$mod+,': guardWithFocusRestore('toggleAppSettings', handlers.toggleAppSettings),
       '$mod+f': guardWithFocusRestore('toggleSearchBar', handlers.toggleSearchBar),
+      '$mod+Shift+c': guardWithFocusRestore(
+        'copyFromTerminal',
+        handlers.copyFromTerminal ?? (() => {}),
+      ),
+      '$mod+Shift+v': guardWithFocusRestore(
+        'pasteToTerminal',
+        handlers.pasteToTerminal ?? (() => {}),
+      ),
     }
     for (let n = 1; n <= 9; n += 1) {
       bindings[`$mod+Digit${n}`] = guardWithFocusRestore('jumpToSession', () =>

@@ -35,6 +35,13 @@ export const TerminalOptionsZ = z.object({
       enableSizeReports: z.boolean().optional(),
     })
     .optional(),
+  /**
+   * Enable xterm.js bracketed paste mode so the terminal wraps pasted text
+   * in ESC[?2004h / ESC[?2004l markers. This lets running programs
+   * distinguish paste from typed input and prevents paste-injection attacks.
+   * Defaults to true at terminal construction when omitted.
+   */
+  bracketedPasteMode: z.boolean().optional(),
 })
 
 export type TerminalOptions = z.infer<typeof TerminalOptionsZ>
