@@ -10,3 +10,6 @@ release
 coverage
 test-results
 playwright-report
+.claude/
+CLAUDE.md
+*.stackdump
