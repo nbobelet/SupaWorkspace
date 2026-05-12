@@ -1,9 +1,9 @@
 import { useEffect } from 'react'
 import { Terminal, type ITheme } from '@xterm/xterm'
-import { FitAddon } from '@xterm/addon-fit'
-import { WebLinksAddon } from '@xterm/addon-web-links'
-import { SearchAddon } from '@xterm/addon-search'
+import type { FitAddon } from '@xterm/addon-fit'
+import { FitAddon as FitAddonCtor } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
+import { toast } from 'sonner'
 import '@xterm/xterm/css/xterm.css'
 import { useSessionStore } from '../state/sessionStore'
 import {
@@ -11,6 +11,7 @@ import {
   type FollowController,
   type FollowOutputTarget,
 } from '../lib/followOutput'
+import { buildAddons } from '../terminal/buildAddons'
 
 const SCROLLBACK = 5000
 
@@ -70,6 +71,7 @@ interface TerminalHandle {
   webgl: WebglAddon | null
   inputDisposable: { dispose: () => void }
   follow: FollowController
+  rafScheduled: boolean
 }
 
 function toFollowTarget(term: Terminal): FollowOutputTarget {
@@ -128,25 +130,68 @@ function getOrCreateHandle(sessionId: string): TerminalHandle {
     theme: xtermTheme,
   })
 
-  const fit = new FitAddon()
-  term.loadAddon(fit)
-  term.loadAddon(new WebLinksAddon())
-  term.loadAddon(new SearchAddon())
-
   const element = document.createElement('div')
   element.style.width = '100%'
   element.style.height = '100%'
   element.dataset['sessionId'] = sessionId
 
+  // `term.open` must run before WebGL — the GPU renderer needs a screen
+  // element to attach to. We call it after addon construction but before
+  // any addon that touches the DOM is activated; xterm tolerates loading
+  // addons either side of `open`, but WebGL specifically needs an attached
+  // screen, so we open *before* the addon loop.
   term.open(element)
 
+  // Build all addons via the pure factory. Order is canonical (see
+  // `buildAddons.ts` doc-comment).
+  const addons = buildAddons()
   let webgl: WebglAddon | null = null
-  try {
-    webgl = new WebglAddon()
-    term.loadAddon(webgl)
-  } catch (err) {
-    console.warn('[xterm] WebGL renderer unavailable, falling back:', err)
-    webgl = null
+  let fit: FitAddon | null = null
+
+  for (const addon of addons) {
+    try {
+      term.loadAddon(addon)
+      // Activate Unicode 15 grapheme handling as soon as its addon loads.
+      if (addon.constructor.name === 'UnicodeGraphemesAddon') {
+        term.unicode.activeVersion = '15-graphemes'
+      }
+      if (addon instanceof WebglAddon) {
+        webgl = addon
+      }
+      if (addon instanceof FitAddonCtor) {
+        fit = addon
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      const addonName = addon.constructor.name
+      toast.error(`xterm addon "${addonName}" failed to load`, {
+        description: message,
+      })
+    }
+  }
+
+  // WebGL renderer can lose its context (driver reset, GPU hot-plug, tab
+  // backgrounding under aggressive policies). Dispose the addon — xterm
+  // falls back to its built-in DOM renderer automatically.
+  if (webgl) {
+    webgl.onContextLoss(() => {
+      webgl?.dispose()
+      const handle = handles.get(sessionId)
+      if (handle) handle.webgl = null
+    })
+  }
+
+  // FitAddon is the canonical last entry of `buildAddons()`. If it
+  // failed to load (extremely unlikely — FitAddon has no DOM or GPU
+  // dependency), construct a fresh one and load it eagerly so the
+  // handle always has a usable fit reference.
+  if (!fit) {
+    fit = new FitAddonCtor()
+    try {
+      term.loadAddon(fit)
+    } catch {
+      // No fit possible — terminal stays at xterm's default size.
+    }
   }
 
   const inputDisposable = term.onData((data) => {
@@ -155,7 +200,15 @@ function getOrCreateHandle(sessionId: string): TerminalHandle {
 
   const follow = createFollowController(toFollowTarget(term))
 
-  const handle: TerminalHandle = { term, fit, element, webgl, inputDisposable, follow }
+  const handle: TerminalHandle = {
+    term,
+    fit,
+    element,
+    webgl,
+    inputDisposable,
+    follow,
+    rafScheduled: false,
+  }
   handles.set(sessionId, handle)
   return handle
 }
@@ -210,13 +263,27 @@ export function useTerminalSession(sessionId: string, container: HTMLElement | n
       }
     }
 
-    requestAnimationFrame(() => fitAndReport(container.clientWidth > 0 && container.clientHeight > 0))
+    // Coalesce ResizeObserver bursts into a single fit per animation
+    // frame. Without this, fast drags or layout settles can produce
+    // dozens of `fit()` calls per second, each reflowing the terminal.
+    let pendingVisibleNow = container.clientWidth > 0 && container.clientHeight > 0
+    const scheduleFit = (visibleNow: boolean): void => {
+      pendingVisibleNow = visibleNow
+      if (handle.rafScheduled) return
+      handle.rafScheduled = true
+      requestAnimationFrame(() => {
+        handle.rafScheduled = false
+        fitAndReport(pendingVisibleNow)
+      })
+    }
+
+    scheduleFit(pendingVisibleNow)
 
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0]
       const rect = entry?.contentRect
       const visibleNow = rect ? rect.width > 0 && rect.height > 0 : container.clientWidth > 0 && container.clientHeight > 0
-      fitAndReport(visibleNow)
+      scheduleFit(visibleNow)
     })
     observer.observe(container)
 
@@ -234,7 +301,16 @@ export function disposeTerminal(sessionId: string): void {
   if (!handle) return
   handle.follow.dispose()
   handle.inputDisposable.dispose()
-  handle.webgl?.dispose()
+  // WebGL may have already disposed itself on context loss — guard the
+  // call so we don't double-dispose.
+  if (handle.webgl) {
+    try {
+      handle.webgl.dispose()
+    } catch {
+      // already disposed
+    }
+    handle.webgl = null
+  }
   handle.term.dispose()
   handle.element.remove()
   handles.delete(sessionId)
