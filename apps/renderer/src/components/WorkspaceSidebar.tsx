@@ -77,15 +77,14 @@ export function WorkspaceSidebar(): ReactElement {
   // When the active workspace changes, expand it and collapse the previous one
   useEffect(() => {
     if (!activeWorkspaceId) return
+    const prevId = prevActiveRef.current
+    prevActiveRef.current = activeWorkspaceId
     setExpandedIds((prev) => {
       const next = new Set(prev)
-      if (prevActiveRef.current && prevActiveRef.current !== activeWorkspaceId) {
-        next.delete(prevActiveRef.current)
-      }
+      if (prevId && prevId !== activeWorkspaceId) next.delete(prevId)
       next.add(activeWorkspaceId)
       return next
     })
-    prevActiveRef.current = activeWorkspaceId
   }, [activeWorkspaceId])
 
   const toggleExpand = useCallback((id: string) => {
