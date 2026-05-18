@@ -13,6 +13,7 @@ import { useSessionStore } from '../state/sessionStore'
 import { usePaneProgressStore, type ProgressEntry } from '../state/paneProgressStore'
 import {
   createFollowController,
+  shouldResyncAfterFit,
   type FollowController,
   type FollowOutputTarget,
 } from '../lib/followOutput'
@@ -95,6 +96,22 @@ interface TerminalHandle {
   follow: FollowController
   markerRegistry: MarkerRegistry
   rafScheduled: boolean
+  // Last cols/rows we forwarded to the main process. PaneMosaic's single
+  // mode unmounts the inactive TerminalPane and remounts the active one on
+  // every tab/workspace switch; the remount fires ResizeObserver even when
+  // the layout slot kept the same dimensions. Without this guard each
+  // switch would send a `pty.resize` → SIGWINCH → shell prompt redraw →
+  // stateDetector flips to `running` and the status badge flickers (and
+  // notifications fire).
+  lastReportedSize: { cols: number; rows: number } | null
+}
+
+export function shouldReportResize(
+  prev: { cols: number; rows: number } | null,
+  next: { cols: number; rows: number },
+): boolean {
+  if (!prev) return true
+  return prev.cols !== next.cols || prev.rows !== next.rows
 }
 
 function toFollowTarget(term: Terminal): FollowOutputTarget {
@@ -281,6 +298,7 @@ function getOrCreateHandle(sessionId: string): TerminalHandle {
     follow,
     markerRegistry,
     rafScheduled: false,
+    lastReportedSize: null,
   }
   handles.set(sessionId, handle)
   return handle
@@ -456,8 +474,17 @@ export function useTerminalSession(sessionId: string, container: HTMLElement | n
       try {
         handle.fit.fit()
         const { cols, rows } = handle.term
-        void window.ws.session.resize({ sessionId, cols, rows })
-        if (visibleNow && !wasVisible) {
+        if (shouldReportResize(handle.lastReportedSize, { cols, rows })) {
+          handle.lastReportedSize = { cols, rows }
+          void window.ws.session.resize({ sessionId, cols, rows })
+        }
+        if (
+          shouldResyncAfterFit({
+            visibleNow,
+            wasVisible,
+            isFollowing: handle.follow.isFollowing(),
+          })
+        ) {
           handle.follow.resync()
         }
         wasVisible = visibleNow

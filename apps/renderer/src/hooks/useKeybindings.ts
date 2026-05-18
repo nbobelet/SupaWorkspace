@@ -13,13 +13,11 @@ export interface KeybindingHandlers {
   renameActiveTab: () => void
   renameActiveWorkspace: () => void
   togglePalette: () => void
-  toggleInputBar: () => void
   cycleLayout: () => void
   reorderActiveTabLeft: () => void
   reorderActiveTabRight: () => void
   splitVertical: () => void
   splitHorizontal: () => void
-  focusSessionCommandBar: () => void
   focusWorkspaceCommandBar: () => void
   toggleAppSettings: () => void
   toggleSearchBar: () => void
@@ -31,7 +29,6 @@ export interface KeybindingHandlers {
 // sent it; every other navigation handler returns focus to the active xterm
 // after firing so typing is never stranded on a stale element.
 const FOCUS_EXEMPT: ReadonlySet<keyof KeybindingHandlers> = new Set<keyof KeybindingHandlers>([
-  'focusSessionCommandBar',
   'focusWorkspaceCommandBar',
   'togglePalette',
   'toggleAppSettings',
@@ -107,7 +104,6 @@ export function useKeybindings(handlers: KeybindingHandlers): void {
       '$mod+r': guardWithFocusRestore('renameActiveTab', handlers.renameActiveTab),
       F2: guardWithFocusRestore('renameActiveWorkspace', handlers.renameActiveWorkspace),
       '$mod+k': guardWithFocusRestore('togglePalette', handlers.togglePalette),
-      '$mod+/': guardWithFocusRestore('toggleInputBar', handlers.toggleInputBar),
       '$mod+\\': guardWithFocusRestore('cycleLayout', handlers.cycleLayout),
       '$mod+Shift+ArrowLeft': guardWithFocusRestore(
         'reorderActiveTabLeft',
@@ -119,7 +115,6 @@ export function useKeybindings(handlers: KeybindingHandlers): void {
       ),
       '$mod+Shift+\\': guardWithFocusRestore('splitVertical', handlers.splitVertical),
       '$mod+Shift+-': guardWithFocusRestore('splitHorizontal', handlers.splitHorizontal),
-      '$mod+i': guardWithFocusRestore('focusSessionCommandBar', handlers.focusSessionCommandBar),
       '$mod+,': guardWithFocusRestore('toggleAppSettings', handlers.toggleAppSettings),
       '$mod+f': guardWithFocusRestore('toggleSearchBar', handlers.toggleSearchBar),
       '$mod+Shift+c': guardWithFocusRestore(

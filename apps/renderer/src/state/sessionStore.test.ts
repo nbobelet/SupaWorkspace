@@ -271,3 +271,80 @@ describe('activeByWorkspace tracking', () => {
     expect(useSessionStore.getState().activeByWorkspace[ws2]).toBe('b')
   })
 })
+
+// Regression: EmptyWorkspaceState used to leave snapshot placeholders
+// hanging in the sidebar when the user picked "New Shell" / "New Claude"
+// over "Restore previous". The store now exposes
+// `removePendingForWorkspace` so the prompt can throw the old set out
+// before spawning a fresh PTY.
+describe('removePendingForWorkspace', () => {
+  const ws1 = '550e8400-e29b-41d4-a716-446655440001'
+  const ws2 = '550e8400-e29b-41d4-a716-446655440002'
+
+  beforeEach(() => {
+    useSessionStore.setState({
+      sessions: {},
+      order: [],
+      activeId: null,
+      activeByWorkspace: {},
+      lastUsedType: 'shell',
+    })
+  })
+
+  function addPending(id: string, workspaceId: string): void {
+    useSessionStore
+      .getState()
+      .addSession({ ...s(id, workspaceId), pendingSpawn: true })
+  }
+
+  it('removes only pending placeholders for the given workspace', () => {
+    addPending('a', ws1)
+    addPending('b', ws1)
+    useSessionStore.getState().addSession(s('c', ws1)) // real (no pendingSpawn)
+    addPending('d', ws2)
+
+    useSessionStore.getState().removePendingForWorkspace(ws1)
+
+    const state = useSessionStore.getState()
+    expect(Object.keys(state.sessions).sort()).toEqual(['c', 'd'])
+    expect(state.order).toEqual(['c', 'd'])
+  })
+
+  it('is a no-op when the workspace has no pending placeholders', () => {
+    useSessionStore.getState().addSession(s('a', ws1))
+    const before = useSessionStore.getState().sessions
+    useSessionStore.getState().removePendingForWorkspace(ws1)
+    expect(useSessionStore.getState().sessions).toBe(before)
+  })
+
+  it('clears activeByWorkspace[ws] when it pointed at a removed placeholder', () => {
+    addPending('a', ws1)
+    addPending('b', ws2)
+    expect(useSessionStore.getState().activeByWorkspace[ws1]).toBe('a')
+
+    useSessionStore.getState().removePendingForWorkspace(ws1)
+
+    expect(useSessionStore.getState().activeByWorkspace[ws1]).toBeUndefined()
+    expect(useSessionStore.getState().activeByWorkspace[ws2]).toBe('b')
+  })
+
+  it('clears activeId when it pointed at a removed placeholder', () => {
+    addPending('a', ws1)
+    useSessionStore.getState().setActive('a')
+    expect(useSessionStore.getState().activeId).toBe('a')
+
+    useSessionStore.getState().removePendingForWorkspace(ws1)
+
+    expect(useSessionStore.getState().activeId).toBeNull()
+  })
+
+  it('preserves activeId when it points at a real (non-pending) session', () => {
+    useSessionStore.getState().addSession(s('a', ws1))
+    addPending('b', ws1)
+    useSessionStore.getState().setActive('a')
+
+    useSessionStore.getState().removePendingForWorkspace(ws1)
+
+    expect(useSessionStore.getState().activeId).toBe('a')
+  })
+})

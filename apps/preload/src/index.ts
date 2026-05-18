@@ -16,16 +16,12 @@ import type {
   SessionSpawnRequest,
   SessionSpawnResponse,
   SessionStateEvent,
-  SessionSubmitRequest,
   SessionWriteRequest,
   WorkspaceListResponse,
   WorkspaceOpenResponse,
   WorkspaceReadClaudeMdResponse,
   WorkspaceReadSettingsResponse,
   ClaudeSettings,
-  InputHistoryGetResponse,
-  InputHistoryAppendRequest,
-  InputHistoryAppendResponse,
   Settings,
   SettingsUpdatePayload,
 } from '@shared/ipc'
@@ -59,7 +55,6 @@ const api = {
     spawn: (req: SessionSpawnRequest): Promise<SessionSpawnResponse> =>
       ipcRenderer.invoke(IpcChannel.SessionSpawn, req),
     write: (req: SessionWriteRequest): Promise<void> => ipcRenderer.invoke(IpcChannel.SessionWrite, req),
-    submit: (req: SessionSubmitRequest): Promise<void> => ipcRenderer.invoke(IpcChannel.SessionSubmit, req),
     resize: (req: SessionResizeRequest): Promise<void> => ipcRenderer.invoke(IpcChannel.SessionResize, req),
     kill: (req: SessionKillRequest): Promise<void> => ipcRenderer.invoke(IpcChannel.SessionKill, req),
     rename: (req: SessionRenameRequest): Promise<SessionRenameResponse> =>
@@ -110,11 +105,6 @@ const api = {
       ipcRenderer.invoke(IpcChannel.NotesGet, { workspaceId }),
     set: (workspaceId: string, content: string): Promise<void> =>
       ipcRenderer.invoke(IpcChannel.NotesSet, { workspaceId, content }),
-  },
-  inputHistory: {
-    get: (): Promise<InputHistoryGetResponse> => ipcRenderer.invoke(IpcChannel.InputHistoryGet),
-    append: (req: InputHistoryAppendRequest): Promise<InputHistoryAppendResponse> =>
-      ipcRenderer.invoke(IpcChannel.InputHistoryAppend, req),
   },
   sessionSnapshot: {
     list: (): Promise<SessionSnapshotListResponse> =>

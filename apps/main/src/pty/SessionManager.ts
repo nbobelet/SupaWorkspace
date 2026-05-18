@@ -8,6 +8,7 @@ export interface SessionManagerEvents {
   onData: (sessionId: string, data: string) => void
   onExit: (sessionId: string, exitCode: number, signal?: number) => void
   onState: (sessionId: string, state: SessionState, exitCode?: number | null) => void
+  onUserInput?: (sessionId: string) => void
   onSessionsChanged?: (configs: SessionConfig[]) => void
 }
 
@@ -61,7 +62,7 @@ export class SessionManager {
     }
 
     this.sessions.set(sessionId, { pty, config })
-    this.stateDetector.register(sessionId)
+    this.stateDetector.register(sessionId, opts.type)
 
     pty.onData((data) => {
       this.stateDetector.onData(sessionId, data)
@@ -84,6 +85,7 @@ export class SessionManager {
     const session = this.sessions.get(sessionId)
     if (!session) return
     this.stateDetector.onInput(sessionId)
+    this.events.onUserInput?.(sessionId)
     session.pty.write(data)
   }
 

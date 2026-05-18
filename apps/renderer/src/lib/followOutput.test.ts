@@ -3,6 +3,7 @@ import {
   FOLLOW_THRESHOLD_ROWS,
   createFollowController,
   isAtBottom,
+  shouldResyncAfterFit,
   type FollowOutputTarget,
 } from './followOutput'
 
@@ -167,5 +168,42 @@ describe('createFollowController', () => {
     ctrl.dispose()
     ctrl.onWrite()
     expect(t.scrollToBottom).not.toHaveBeenCalled()
+  })
+})
+
+describe('shouldResyncAfterFit', () => {
+  it('returns false when the pane is not visible', () => {
+    expect(
+      shouldResyncAfterFit({ visibleNow: false, wasVisible: true, isFollowing: true }),
+    ).toBe(false)
+    expect(
+      shouldResyncAfterFit({ visibleNow: false, wasVisible: false, isFollowing: false }),
+    ).toBe(false)
+  })
+
+  it('returns true on hidden -> visible transition regardless of follow state', () => {
+    expect(
+      shouldResyncAfterFit({ visibleNow: true, wasVisible: false, isFollowing: false }),
+    ).toBe(true)
+    expect(
+      shouldResyncAfterFit({ visibleNow: true, wasVisible: false, isFollowing: true }),
+    ).toBe(true)
+  })
+
+  // Regression: after a workspace switch the new TerminalPane mounts and a
+  // post-mount fit runs. Before the fix, only the hidden -> visible edge
+  // triggered a resync, so the row-count change left the newest rows clipped
+  // behind the footer / SessionCommandBar until the user pressed a key. With
+  // the fix, any post-fit re-anchors when the user was following.
+  it('returns true when still visible AND the user was following (post-fit re-anchor)', () => {
+    expect(
+      shouldResyncAfterFit({ visibleNow: true, wasVisible: true, isFollowing: true }),
+    ).toBe(true)
+  })
+
+  it('returns false when still visible AND the user manually scrolled up', () => {
+    expect(
+      shouldResyncAfterFit({ visibleNow: true, wasVisible: true, isFollowing: false }),
+    ).toBe(false)
   })
 })

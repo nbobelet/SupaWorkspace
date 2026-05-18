@@ -4,7 +4,7 @@ import { useWorkspaceStore } from '../state/workspaceStore'
 import { useOpenWorkspace } from '../hooks/useOpenWorkspace'
 import { addSessionWithFocus, activateSession } from '../lib/sessionFocus'
 import type { SessionType } from '@shared/session'
-import type { RendererSession } from '../state/sessionStore'
+import { useSessionStore, type RendererSession } from '../state/sessionStore'
 
 interface EmptyWorkspaceStateProps {
   pendingSessions?: RendererSession[]
@@ -19,6 +19,10 @@ export function EmptyWorkspaceState({ pendingSessions }: EmptyWorkspaceStateProp
   const spawn = useCallback(
     async (type: SessionType) => {
       if (!activeWorkspaceId) return
+      // Picking "New Shell" / "New Claude" via the snapshot offer is the
+      // user's explicit "I don't want to restore" answer — drop the
+      // placeholders so they don't linger as ghost tabs in the sidebar.
+      useSessionStore.getState().removePendingForWorkspace(activeWorkspaceId)
       const res = await window.ws.session.spawn({
         workspaceId: activeWorkspaceId,
         type,

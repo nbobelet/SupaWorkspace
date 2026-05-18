@@ -19,6 +19,28 @@ export function isAtBottom(
   return baseY - viewportY <= threshold
 }
 
+/**
+ * Decide whether a fit-triggered resize should re-anchor the viewport
+ * to the bottom. Called from the per-session ResizeObserver after fit.
+ *  - invisible pane: never resync (no work to do until it shows).
+ *  - hidden -> visible transition: always resync (initial mount or
+ *    workspace switch back to a previously-shown pane).
+ *  - still visible AND user was following: resync (otherwise the row-count
+ *    change after a layout shift leaves the newest output behind the
+ *    footer / SessionCommandBar until a keystroke triggers a re-anchor).
+ *  - still visible AND user scrolled up manually: do NOT resync (preserve
+ *    the user's scroll position so they can read history).
+ */
+export function shouldResyncAfterFit(opts: {
+  visibleNow: boolean
+  wasVisible: boolean
+  isFollowing: boolean
+}): boolean {
+  if (!opts.visibleNow) return false
+  if (!opts.wasVisible) return true
+  return opts.isFollowing
+}
+
 export interface FollowController {
   isFollowing(): boolean
   beginWrite(): void

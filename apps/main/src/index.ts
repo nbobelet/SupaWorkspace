@@ -6,7 +6,6 @@ import { SessionManager } from './pty/SessionManager'
 import { WorkspaceStore } from './workspace/WorkspaceStore'
 import { Notifier } from './notifications/Notifier'
 import { NotesStore } from './notes/NotesStore'
-import { InputHistoryStore } from './input-history/InputHistoryStore'
 import { SessionSnapshotStore } from './sessions-snapshot/SessionSnapshotStore'
 import { CmdGuardStore } from './cmd-guard/CmdGuardStore'
 import { BugReportStore } from './bug-report/BugReportStore'
@@ -15,7 +14,6 @@ import { registerSessionIpc } from './ipc/session'
 import { registerWorkspaceIpc } from './ipc/workspace'
 import { registerPermissionsIpc } from './ipc/permissions'
 import { registerNotesIpc } from './ipc/notes'
-import { registerInputHistoryIpc } from './ipc/inputHistory'
 import { registerSessionSnapshotIpc } from './ipc/sessionSnapshot'
 import { registerCmdGuardIpc } from './ipc/cmdGuard'
 import { registerBugReportIpc } from './ipc/bugReport'
@@ -111,7 +109,6 @@ void app.whenReady().then(async () => {
 
   const workspaceStore = new WorkspaceStore()
   const notesStore = new NotesStore()
-  const inputHistoryStore = new InputHistoryStore()
   const snapshotStore = new SessionSnapshotStore()
   const cmdGuardStore = new CmdGuardStore()
   const bugReportStore = new BugReportStore({
@@ -133,6 +130,7 @@ void app.whenReady().then(async () => {
       broadcast(IpcChannel.SessionState, { sessionId, state, exitCode: exitCode ?? null })
       notifier.handleStateChange(sessionId, state, exitCode)
     },
+    onUserInput: (sessionId) => notifier.markUserInput(sessionId),
     onSessionsChanged: (configs) => {
       snapshotStore.save(
         configs.map((c) => ({ workspaceId: c.workspaceId, type: c.type, label: c.label })),
@@ -149,7 +147,6 @@ void app.whenReady().then(async () => {
   registerWorkspaceIpc({ workspaceStore, sessionManager, getMainWindow })
   registerPermissionsIpc({ workspaceStore, getMainWindow, notifier })
   registerNotesIpc({ notesStore })
-  registerInputHistoryIpc({ inputHistoryStore })
   registerSessionSnapshotIpc({ snapshotStore })
   registerCmdGuardIpc({ cmdGuardStore })
   registerBugReportIpc({ bugReportStore })

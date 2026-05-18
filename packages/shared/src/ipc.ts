@@ -5,7 +5,6 @@ import { PathGrant, Workspace } from './workspace'
 export const IpcChannel = {
   SessionSpawn: 'session:spawn',
   SessionWrite: 'session:write',
-  SessionSubmit: 'session:submit',
   SessionResize: 'session:resize',
   SessionKill: 'session:kill',
   SessionRename: 'session:rename',
@@ -29,8 +28,6 @@ export const IpcChannel = {
   NotifPush: 'notif:push',
   NotesGet: 'notes:get',
   NotesSet: 'notes:set',
-  InputHistoryGet: 'input-history:get',
-  InputHistoryAppend: 'input-history:append',
   SessionSnapshotList: 'session-snapshot:list',
   SessionSnapshotClear: 'session-snapshot:clear',
   CmdGuardGet: 'cmd-guard:get',
@@ -73,12 +70,6 @@ export const SessionWriteRequest = z.object({
   data: z.string(),
 })
 export type SessionWriteRequest = z.infer<typeof SessionWriteRequest>
-
-export const SessionSubmitRequest = z.object({
-  sessionId: z.string().uuid(),
-  data: z.string(),
-})
-export type SessionSubmitRequest = z.infer<typeof SessionSubmitRequest>
 
 export const SessionResizeRequest = z.object({
   sessionId: z.string().uuid(),
@@ -262,21 +253,6 @@ export const NotesSetRequest = z.object({
   content: z.string().max(1_000_000),
 })
 export type NotesSetRequest = z.infer<typeof NotesSetRequest>
-
-export const InputHistoryGetResponse = z.object({
-  entries: z.array(z.string()),
-})
-export type InputHistoryGetResponse = z.infer<typeof InputHistoryGetResponse>
-
-export const InputHistoryAppendRequest = z.object({
-  entry: z.string().max(10_000),
-})
-export type InputHistoryAppendRequest = z.infer<typeof InputHistoryAppendRequest>
-
-export const InputHistoryAppendResponse = z.object({
-  entries: z.array(z.string()),
-})
-export type InputHistoryAppendResponse = z.infer<typeof InputHistoryAppendResponse>
 
 /**
  * App-wide settings — currently only governs the clipboard / progress

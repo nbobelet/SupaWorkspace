@@ -35,6 +35,11 @@ interface SessionStoreState {
     },
   ) => void
   removeSession: (id: string) => void
+  // Drops all `pendingSpawn` placeholders that belong to the given workspace.
+  // Called by EmptyWorkspaceState when the user explicitly picks "New Shell"
+  // / "New Claude" instead of restoring the snapshot — the snapshot offer is
+  // the user's choice, and choosing "new" must throw the old set out.
+  removePendingForWorkspace: (workspaceId: string) => void
   setState: (id: string, state: SessionState, exitCode?: number | null) => void
   setActive: (id: string | null) => void
   clearAttentionBadge: (id: string) => void
@@ -72,6 +77,32 @@ export const useSessionStore = create<SessionStoreState>((set) => ({
           : prev.activeByWorkspace,
         lastUsedType: s.type,
       }
+    }),
+
+  removePendingForWorkspace: (workspaceId) =>
+    set((prev) => {
+      const removedIds = new Set<string>()
+      for (const id in prev.sessions) {
+        const s = prev.sessions[id]
+        if (s && s.workspaceId === workspaceId && s.pendingSpawn) {
+          removedIds.add(id)
+        }
+      }
+      if (removedIds.size === 0) return prev
+      const sessions: Record<string, RendererSession> = {}
+      for (const id in prev.sessions) {
+        if (!removedIds.has(id)) {
+          const s = prev.sessions[id]
+          if (s) sessions[id] = s
+        }
+      }
+      const order = prev.order.filter((sid) => !removedIds.has(sid))
+      const activeByWorkspace = { ...prev.activeByWorkspace }
+      const ws = activeByWorkspace[workspaceId]
+      if (ws !== undefined && removedIds.has(ws)) delete activeByWorkspace[workspaceId]
+      const activeId =
+        prev.activeId !== null && removedIds.has(prev.activeId) ? null : prev.activeId
+      return { sessions, order, activeByWorkspace, activeId }
     }),
 
   removeSession: (id) =>

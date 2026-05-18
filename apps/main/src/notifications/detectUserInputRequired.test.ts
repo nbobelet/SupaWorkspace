@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { detectUserInputRequired } from './detectUserInputRequired'
+import { detectUserInputRequired, isClaudeBoxAsking } from './detectUserInputRequired'
 
 describe('detectUserInputRequired', () => {
   describe('positive matches', () => {
@@ -55,6 +57,52 @@ describe('detectUserInputRequired', () => {
       expect(detectUserInputRequired('Use --yes (y/n) to skip prompts. See help for more.')).toBe(
         false,
       )
+    })
+  })
+
+  // Regression: Claude TUI wraps permission prompts inside a Unicode
+  // box-drawing frame. The single-line `Do you want to allow ... $`
+  // anchor never matches because the frame contains `│` + newlines
+  // after the question. `isClaudeBoxAsking` scans a wider tail for the
+  // co-occurrence of (box char) + "Do you want" + selector `❯`.
+  describe('claude TUI box-asking', () => {
+    const fixturePath = join(
+      __dirname,
+      '..',
+      '..',
+      'test',
+      'fixtures',
+      'pty',
+      'claude-asking-permission.bin',
+    )
+    const frame = readFileSync(fixturePath, 'utf8')
+
+    it('detects the fixture box frame as asking', () => {
+      expect(isClaudeBoxAsking(frame)).toBe(true)
+      expect(detectUserInputRequired(frame)).toBe(true)
+    })
+
+    it('returns false for a box frame missing "Do you want"', () => {
+      const noText =
+        '╭─────────╮\n│   ❯ Yes │\n│     No  │\n╰─────────╯\n'
+      expect(isClaudeBoxAsking(noText)).toBe(false)
+    })
+
+    it('returns false for a box frame missing the ❯ selector', () => {
+      const noSelector =
+        '╭─────────────────────────╮\n│ Do you want to allow X? │\n│   Yes                    │\n│     No                   │\n╰─────────────────────────╯\n'
+      expect(isClaudeBoxAsking(noSelector)).toBe(false)
+    })
+
+    it('returns false when no box-drawing char is present', () => {
+      const noBox = 'Do you want to allow X?\n  ❯ Yes\n    No\n'
+      expect(isClaudeBoxAsking(noBox)).toBe(false)
+    })
+
+    it('still detects asking after preceding noise pushes buffer near the tail cap', () => {
+      const noise = 'x'.repeat(1500)
+      expect(isClaudeBoxAsking(noise + frame)).toBe(true)
+      expect(detectUserInputRequired(noise + frame)).toBe(true)
     })
   })
 })
