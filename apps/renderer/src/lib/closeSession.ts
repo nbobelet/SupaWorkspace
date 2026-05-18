@@ -1,6 +1,7 @@
 import { useSessionStore } from '../state/sessionStore'
 import { disposeTerminal } from '../hooks/useTerminalSession'
 import { withViewTransition } from './viewTransition'
+import { focusIfSoleSession } from './sessionFocus'
 
 // Single entry point for "user wants this tab gone".
 //
@@ -14,6 +15,7 @@ import { withViewTransition } from './viewTransition'
 // and tab context menu.
 export function closeSession(sessionId: string): void {
   const session = useSessionStore.getState().sessions[sessionId]
+  const workspaceId = session?.workspaceId ?? null
   // Placeholder tabs (snapshot-restored, not yet spawned) have no PTY in the
   // main process — skip the kill IPC to avoid "unknown session" errors.
   if (session && session.state !== 'ending' && !session.pendingSpawn) {
@@ -21,4 +23,5 @@ export function closeSession(sessionId: string): void {
   }
   withViewTransition(() => useSessionStore.getState().removeSession(sessionId))
   disposeTerminal(sessionId)
+  if (workspaceId) focusIfSoleSession(workspaceId)
 }

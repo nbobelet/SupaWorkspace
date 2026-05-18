@@ -7,7 +7,6 @@ import { SessionTabs } from './components/SessionTabs'
 import { LayoutSwitcher } from './components/LayoutSwitcher'
 import { SettingsPanel } from './components/settings/SettingsPanel'
 import { CommandPalette } from './components/CommandPalette'
-import { SessionCommandBar } from './components/SessionCommandBar'
 import { CmdGuardModal } from './components/CmdGuardModal'
 import { BugReportButton } from './components/BugReportButton'
 import { BugReportDialog } from './components/BugReportDialog'
@@ -16,15 +15,15 @@ import { useWorkspaceStore } from './state/workspaceStore'
 import { useLayoutStore } from './state/layoutStore'
 import { useNotificationStore } from './state/notificationStore'
 import { usePaletteStore } from './state/paletteStore'
-import { useSessionCommandBarStore } from './state/sessionCommandBarStore'
 import { useCmdGuardStore } from './state/cmdGuardStore'
 import { useSearchBarStore } from './state/searchBarStore'
 import { useKeybindings } from './hooks/useKeybindings'
 import { focusSession, getTerminalSelection, terminalPaste } from './hooks/useTerminalSession'
 import { showCopiedToast } from './components/ClipboardToast'
 import { withViewTransition } from './lib/viewTransition'
-import { addSessionWithFocus, activateSession } from './lib/sessionFocus'
+import { addSessionWithFocus, activateSession, focusIfSoleSession } from './lib/sessionFocus'
 import { closeSession } from './lib/closeSession'
+import { shouldSuppressDoneToast } from './lib/suppressDoneToast'
 import type { SessionType } from '@shared/session'
 
 export function App(): ReactElement {
@@ -46,19 +45,9 @@ export function App(): ReactElement {
 
   const pushNotif = useNotificationStore((s) => s.push)
   const togglePalette = usePaletteStore((s) => s.toggle)
-  const toggleInputBar = useSessionCommandBarStore((s) => s.toggleVisible)
   const loadCmdGuard = useCmdGuardStore((s) => s.load)
 
   const [settingsOpen, setSettingsOpen] = useState(false)
-
-  const focusSessionCommandBar = useCallback(() => {
-    if (!useSessionCommandBarStore.getState().visible) {
-      useSessionCommandBarStore.getState().toggleVisible()
-    }
-    requestAnimationFrame(() => {
-      window.dispatchEvent(new CustomEvent('session-command-bar:focus-request'))
-    })
-  }, [])
 
   // Workspace-scoped command bar does not exist as a persistent component
   // today (the WorkspaceSidebar uses an inline rename input only). Stub kept
@@ -94,6 +83,8 @@ export function App(): ReactElement {
           pendingSpawn: true,
         })
       }
+      const activeWs = useWorkspaceStore.getState().activeWorkspaceId
+      if (activeWs) focusIfSoleSession(activeWs)
     })()
     return () => {
       cancelled = true
@@ -130,6 +121,7 @@ export function App(): ReactElement {
         requestAnimationFrame(() => focusSession(target))
       }
     }
+    focusIfSoleSession(activeWorkspaceId)
   }, [activeWorkspaceId, setActive])
 
   useEffect(() => {
@@ -142,17 +134,20 @@ export function App(): ReactElement {
     }
     const unsubscribe = window.ws.notifications.onPush((event) => {
       pushNotif(event)
-      const title =
+      const { activeId: currentActiveId } = useSessionStore.getState()
+      if (shouldSuppressDoneToast(event, currentActiveId, document.hasFocus())) return
+      const status =
         event.kind === 'user-input-required'
-          ? 'Claude needs input'
+          ? 'input needed'
           : event.kind === 'request-complete'
-            ? 'Claude finished'
+            ? 'done'
             : event.kind === 'permission-prompt'
-              ? 'Permission requested'
-              : 'Session errored'
-      const description = event.sessionLabel
-        ? `${event.workspaceName} · ${event.sessionLabel}`
-        : event.workspaceName
+              ? 'permission requested'
+              : 'errored'
+      const title = event.sessionLabel
+        ? `${event.workspaceName} - ${event.sessionLabel} : ${status}`
+        : `${event.workspaceName} : ${status}`
+      const description = event.detail
       const action = {
         label: 'Open',
         onClick: () => focusFromNotif(event.workspaceId, event.sessionId),
@@ -160,7 +155,7 @@ export function App(): ReactElement {
       if (event.kind === 'error') toast.error(title, { description, action })
       else if (event.kind === 'user-input-required' || event.kind === 'permission-prompt')
         toast.warning(title, { description, action })
-      else toast.success(title, { description, action })
+      else toast.success(title, { description, action, duration: 3000 })
     })
     return unsubscribe
   }, [pushNotif, setActive, setActiveWorkspace])
@@ -258,7 +253,6 @@ export function App(): ReactElement {
       window.dispatchEvent(new CustomEvent('workspace:rename-active'))
     },
     togglePalette,
-    toggleInputBar,
     cycleLayout: () => {
       if (activeWorkspaceId) cycleMode(activeWorkspaceId)
     },
@@ -270,7 +264,6 @@ export function App(): ReactElement {
     splitHorizontal: () => {
       if (activeWorkspaceId) setLayoutMode(activeWorkspaceId, 'split-horizontal')
     },
-    focusSessionCommandBar,
     focusWorkspaceCommandBar,
     toggleAppSettings,
     // Cmd+F / Ctrl+F — toggles the floating SearchBar for the active
@@ -321,11 +314,10 @@ export function App(): ReactElement {
         <div className="flex-1 overflow-hidden">
           <PaneMosaic />
         </div>
-        <SessionCommandBar />
         <footer className="flex items-center justify-between border-t border-border bg-bg-sunken px-3 py-1 text-[10px] text-muted">
           <span>
-            Ctrl+K palette · Ctrl+/ input bar · Ctrl+I focus input · Ctrl+, settings · Ctrl+1–9 focus
-            · Ctrl+\ layout · Ctrl+T new {lastUsedType}
+            Ctrl+K palette · Ctrl+, settings · Ctrl+1–9 focus · Ctrl+\ layout · Ctrl+T new{' '}
+            {lastUsedType}
           </span>
           <span>
             {scopedOrder.length} session{scopedOrder.length === 1 ? '' : 's'}

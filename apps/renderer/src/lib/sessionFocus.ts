@@ -1,6 +1,14 @@
 import { useSessionStore, type RendererSession } from '../state/sessionStore'
 import { focusSession } from '../hooks/useTerminalSession'
 
+function isEditableNonXtermFocused(): boolean {
+  if (typeof document === 'undefined') return false
+  const active = document.activeElement
+  if (!(active instanceof HTMLElement)) return false
+  if (active.closest('.xterm')) return false
+  return active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable
+}
+
 const pendingSpawns = new Set<string>()
 
 /**
@@ -15,6 +23,10 @@ export async function activateSession(id: string): Promise<void> {
   if (!session) return
 
   if (!session.pendingSpawn) {
+    // Clicking the already-active pane must not re-focus through the
+    // follow controller — resync() would call scrollToBottom() and wipe
+    // any in-flight selection / scroll-back.
+    if (store.activeId === id) return
     store.setActive(id)
     requestAnimationFrame(() => focusSession(id))
     return
@@ -81,17 +93,39 @@ export function addSessionWithFocus(
     // Don't steal focus from an editable element the user is actively using
     // (e.g. the SessionCommandBar textarea). xterm's own canvas/textarea is
     // exempt — focus theft from xterm is intentional when spawning.
-    const active = document.activeElement
-    const isEditableFocused =
-      active instanceof HTMLElement &&
-      !active.closest('.xterm') &&
-      (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)
-    if (!isEditableFocused) {
+    if (!isEditableNonXtermFocused()) {
       focusSession(session.id)
     }
     const el = document.querySelector(`[data-session-id="${CSS.escape(session.id)}"]`)
     if (el instanceof HTMLElement) {
       el.scrollIntoView({ behavior: scrollBehavior, inline: 'nearest', block: 'nearest' })
     }
+  })
+}
+
+/**
+ * If the given workspace contains exactly one ready (non-pending) session,
+ * focus its terminal on the next animation frame. No-op otherwise.
+ *
+ * Used to keep the cursor in the terminal whenever the workspace narrows
+ * down to a single typeable session — workspace switch, tab close, app
+ * startup. Skips when the user is actively typing in an editable element
+ * outside xterm (same guard as `addSessionWithFocus`).
+ */
+export function focusIfSoleSession(workspaceId: string): void {
+  const { sessions } = useSessionStore.getState()
+  let soleId: string | null = null
+  for (const id in sessions) {
+    const s = sessions[id]
+    if (!s || s.workspaceId !== workspaceId || s.pendingSpawn) continue
+    if (soleId !== null) return
+    soleId = id
+  }
+  if (soleId === null) return
+  if (isEditableNonXtermFocused()) return
+  const target = soleId
+  requestAnimationFrame(() => {
+    if (isEditableNonXtermFocused()) return
+    focusSession(target)
   })
 }
