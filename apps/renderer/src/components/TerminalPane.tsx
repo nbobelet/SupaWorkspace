@@ -5,6 +5,7 @@ import { useWorkspaceStore } from '../state/workspaceStore'
 import { useSearchBarStore } from '../state/searchBarStore'
 import { usePaneProgressStore, type ProgressEntry } from '../state/paneProgressStore'
 import { clampMenuPosition, VIEWPORT_MARGIN } from '../lib/menuPosition'
+import { focusActiveSession } from '../lib/sessionFocus'
 import { SearchBar } from './SearchBar'
 import { showCopiedToast } from './ClipboardToast'
 
@@ -20,6 +21,8 @@ function stateBadgeClasses(state: string, exitCode: number | null): string {
       return 'bg-running/20 text-running'
     case 'asking':
       return 'bg-warn/20 text-warn motion-safe:animate-pulse'
+    case 'done':
+      return 'bg-accent/30 text-accent motion-safe:animate-pulse'
     case 'ending':
       return exitCode !== null && exitCode !== 0
         ? 'bg-error/20 text-error'
@@ -113,6 +116,18 @@ export function TerminalPane({ sessionId, isActive, onFocus }: TerminalPaneProps
   // Only mount xterm once the PTY has actually been spawned. Placeholder tabs
   // restored from the snapshot stay inert until the user activates them.
   useTerminalSession(sessionId, container)
+
+  // Focus invariant: whenever this pane is active AND its xterm element is
+  // mounted in the DOM, the inner helper textarea must receive focus so the
+  // user can type immediately after a tab/workspace switch — no extra click.
+  // Owning the focus call here (rather than in App.tsx / activateSession)
+  // guarantees it fires AFTER React commits the new tree and
+  // `useTerminalSession` reattaches `handle.element`. A single rAF in the
+  // caller used to fire too early and land `term.focus()` on a detached node.
+  useEffect(() => {
+    if (!isActive || !container) return
+    focusActiveSession(sessionId)
+  }, [isActive, container, sessionId])
 
   // Clamp context menu position once its own rect is known.
   useLayoutEffect(() => {

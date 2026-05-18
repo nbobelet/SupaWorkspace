@@ -268,6 +268,43 @@ describe('StateDetector', () => {
       detector.onData('s1', '\x1b[?25h')
       expect(detector.getState('s1')).toBe('running')
     })
+
+    // Regression: Claude TUI emits constant cursor-blink / spinner / OSC
+    // title repaints that have empty stripAnsi tails. Before the fix the
+    // running-state ANSI-noise guard only applied to `idle`, so each burst
+    // reset the fallback idle timer and the Claude session stayed `running`
+    // forever even after Claude finished its turn — the asking notification
+    // never fired because the state machine never transitioned out of
+    // `running` in the first place.
+    it('spinner bursts during running do NOT reset the fallback idle timer', () => {
+      const { detector } = makeDetector()
+      detector.register('s1', 'claude')
+      detector.onData('s1', 'Real Claude content')
+      expect(detector.getState('s1')).toBe('running')
+
+      // Simulate Claude TUI cursor-blink every 250ms during the 2s fallback
+      // window. Each burst is pure ANSI noise (hide+show cursor).
+      for (let i = 0; i < 8; i++) {
+        vi.advanceTimersByTime(250)
+        detector.onData('s1', '\x1b[?25l\x1b[?25h')
+      }
+      // 2s elapsed in 250ms increments. Fallback (2000ms after the only
+      // meaningful chunk) should have fired exactly once during the loop.
+      expect(detector.getState('s1')).toBe('idle')
+    })
+
+    it('OSC-title repaints during running do NOT reset the fallback idle timer', () => {
+      const { detector } = makeDetector()
+      detector.register('s1', 'claude')
+      detector.onData('s1', 'Real Claude content')
+
+      // Title repaints arrive every 400ms (mimicking xterm title hooks).
+      for (let i = 0; i < 6; i++) {
+        vi.advanceTimersByTime(400)
+        detector.onData('s1', '\x1b]0;claude — thinking\x07')
+      }
+      expect(detector.getState('s1')).toBe('idle')
+    })
   })
 
   // Regression replay: pwsh `sleep 3` finishes and prints its next prompt
@@ -313,6 +350,165 @@ describe('StateDetector', () => {
 
       detector.onData('s1', frame)
       expect(detector.getState('s1')).toBe('asking')
+    })
+  })
+
+  // Regression: when Claude's permission menu is dismissed (Esc, or Claude
+  // redraws the frame without `❯` / "Do you want"), the next meaningful
+  // chunk must drop the session out of `asking`. Before the fix, `asking`
+  // was sticky except via onInput — closing the menu left the state stuck
+  // until the user typed something unrelated.
+  describe('asking → idle when buffer no longer matches', () => {
+    it('drops to running then settles to idle after the menu is gone', () => {
+      const frame = readFileSync(join(FIXTURE_DIR, 'claude-asking-permission.bin'), 'utf8')
+      const { detector } = makeDetector()
+      detector.register('s1', 'claude')
+
+      detector.onData('s1', frame)
+      expect(detector.getState('s1')).toBe('asking')
+
+      // Menu dismissed: a plain Claude output chunk arrives, no asking pattern.
+      detector.onData('s1', 'Continuing task without asking\n')
+      expect(detector.getState('s1')).toBe('running')
+
+      // Claude fallback (2s) should settle to idle.
+      vi.advanceTimersByTime(2000)
+      expect(detector.getState('s1')).toBe('idle')
+    })
+  })
+
+  // Regression: OSC 133;D ("command done") is the authoritative shell signal
+  // that the foreground command finished. When present, the detector must
+  // shortcut running → idle without waiting for the debounce or fallback
+  // timer. Before the fix, all OSC 133 codes (A/B/C/D) were misrouted to
+  // `asking` via a single unanchored regex.
+  describe('OSC 133;D done marker', () => {
+    it('shortcuts running → idle immediately (no debounce wait)', () => {
+      const { detector } = makeDetector()
+      detector.register('s1', 'shell')
+
+      detector.onData('s1', 'building project...\r\n')
+      expect(detector.getState('s1')).toBe('running')
+
+      // OSC 133;D arrives. State should flip to idle on the same data event,
+      // not after IDLE_DEBOUNCE_MS or FALLBACK_IDLE_MS.shell (10s).
+      detector.onData('s1', 'done\r\n\x1b]133;D\x07')
+      expect(detector.getState('s1')).toBe('idle')
+    })
+
+    it('does NOT flip to asking on a malformed 133;A burst (no valid terminator)', () => {
+      const { detector } = makeDetector()
+      detector.register('s1', 'shell')
+
+      // The anchored regex requires `A` to be terminated by `;`, BEL, ST, or
+      // end-of-tail. A bare letter after `A` (here `B`) is none of those —
+      // simulates a truncated / malformed escape that the OLD unanchored
+      // regex would have falsely matched as asking.
+      detector.onData('s1', 'streaming output here \x1b]133;ABCDE more text')
+      expect(detector.getState('s1')).toBe('running')
+    })
+  })
+
+  // Regression: `done` is a discrete state that fires when Notifier signals
+  // request-complete. Auto-reverts to idle after DONE_DURATION_MS (1500ms).
+  // Cancelled on any new transition (user activity, exit, etc.) to prevent
+  // timer leaks.
+  describe('done state + auto-revert', () => {
+    it('markDone transitions idle → done → idle after 1500ms', () => {
+      const { detector, events } = makeDetector()
+      detector.register('s1', 'claude')
+      detector.onData('s1', 'finished a turn')
+      vi.advanceTimersByTime(2000)
+      expect(detector.getState('s1')).toBe('idle')
+
+      detector.markDone('s1')
+      expect(detector.getState('s1')).toBe('done')
+
+      vi.advanceTimersByTime(1500)
+      expect(detector.getState('s1')).toBe('idle')
+
+      const lastTwo = events.slice(-2).map((e) => e.state)
+      expect(lastTwo).toEqual(['done', 'idle'])
+    })
+
+    it('cancels pending done auto-revert when new activity arrives', () => {
+      const { detector } = makeDetector()
+      detector.register('s1', 'claude')
+      detector.onData('s1', 'turn finished')
+      vi.advanceTimersByTime(2000)
+      expect(detector.getState('s1')).toBe('idle')
+
+      detector.markDone('s1')
+      expect(detector.getState('s1')).toBe('done')
+
+      // User types: onInput must clear the done timer AND transition to running.
+      detector.onInput('s1')
+      expect(detector.getState('s1')).toBe('running')
+
+      // Even past the original 1500ms window, no done-auto-revert should fire.
+      vi.advanceTimersByTime(1500)
+      expect(detector.getState('s1')).toBe('running')
+    })
+
+    it('markDone is a no-op from asking (asking takes priority)', () => {
+      const { detector } = makeDetector()
+      detector.register('s1', 'claude')
+      detector.onData('s1', 'continue? [y/N] ')
+      expect(detector.getState('s1')).toBe('asking')
+
+      detector.markDone('s1')
+      expect(detector.getState('s1')).toBe('asking')
+    })
+
+    it('markDone is a no-op after exit (ending is terminal)', () => {
+      const { detector } = makeDetector()
+      detector.register('s1', 'shell')
+      detector.onExit('s1', 0)
+      expect(detector.getState('s1')).toBe('ending')
+
+      detector.markDone('s1')
+      expect(detector.getState('s1')).toBe('ending')
+    })
+
+    it('unregister clears the done timer (no leak)', () => {
+      const { detector, events } = makeDetector()
+      detector.register('s1', 'claude')
+      detector.onData('s1', 'work')
+      vi.advanceTimersByTime(2000)
+      detector.markDone('s1')
+      expect(detector.getState('s1')).toBe('done')
+
+      detector.unregister('s1')
+      vi.advanceTimersByTime(2000)
+
+      // Track is gone — auto-revert callback no-ops. No phantom events emitted.
+      const afterUnregister = events.filter((e) => e.state === 'idle').length
+      // Only the initial register emit + the post-onData settle should count;
+      // the would-be done-auto-revert must not have fired.
+      expect(afterUnregister).toBe(2)
+    })
+  })
+
+  // Regression: the soft transition-graph assertion. Illegal moves must log
+  // a warning and skip (never throw — the state machine must not crash the
+  // app). Documented because future contributors might be tempted to harden
+  // this into a throw.
+  describe('transition graph soft assertion', () => {
+    it('skips an illegal transition without throwing', () => {
+      const { detector, events } = makeDetector()
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      detector.register('s1', 'shell')
+      detector.onExit('s1', 0)
+      expect(detector.getState('s1')).toBe('ending')
+
+      // ending → done is NOT in TRANSITIONS[ending] (terminal state).
+      // markDone from ending is a no-op at the markDone level, so this
+      // test calls onInput AFTER ending to exercise the assertion path.
+      detector.onInput('s1')
+      expect(detector.getState('s1')).toBe('ending')
+      expect(warn).toHaveBeenCalled()
+      expect(events[events.length - 1]?.state).toBe('ending')
+      warn.mockRestore()
     })
   })
 })

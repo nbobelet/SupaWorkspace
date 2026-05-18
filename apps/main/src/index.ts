@@ -137,6 +137,10 @@ void app.whenReady().then(async () => {
       )
     },
   })
+  // Late-bind the request-complete pulse: notifier emits, detector pulses.
+  // Construction is cyclic (sessionManager.onState → notifier; notifier's
+  // callback → sessionManager.markDone) so we wire it post-construction.
+  notifier.onRequestComplete = (sessionId) => sessionManager.markDone(sessionId)
 
   registerSessionIpc({
     sessionManager,

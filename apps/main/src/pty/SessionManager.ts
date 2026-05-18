@@ -148,6 +148,13 @@ export class SessionManager {
     return session.config
   }
 
+  // Proxy for Notifier's `onRequestComplete` callback. Notifier doesn't import
+  // StateDetector directly (no circular dep); main process injects this method
+  // as the callback at construction time. See apps/main/src/index.ts wiring.
+  markDone(sessionId: string): void {
+    this.stateDetector.markDone(sessionId)
+  }
+
   private resolveCommand(type: SessionType, label?: string): {
     command: string
     args: string[]

@@ -10,6 +10,10 @@ export function getSessionStatus(state: SessionState, exitCode?: number | null):
       return 'running'
     case 'ending':
       return exitCode !== undefined && exitCode !== null && exitCode !== 0 ? 'error' : 'idle'
+    // `done` is a transient visual pulse — for status/priority purposes it
+    // behaves like idle (the work is finished, no user attention required).
+    // Components that want to render the pulse read `session.state` directly.
+    case 'done':
     case 'idle':
     default:
       return 'idle'

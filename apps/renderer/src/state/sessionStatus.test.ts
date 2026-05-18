@@ -14,6 +14,10 @@ describe('getSessionStatus', () => {
     expect(getSessionStatus('idle')).toBe('idle')
   })
 
+  it('maps done to idle (transient pulse, no priority bump)', () => {
+    expect(getSessionStatus('done')).toBe('idle')
+  })
+
   it('maps ending with exitCode 0 to idle', () => {
     expect(getSessionStatus('ending', 0)).toBe('idle')
   })
