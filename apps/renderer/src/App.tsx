@@ -18,7 +18,7 @@ import { usePaletteStore } from './state/paletteStore'
 import { useCmdGuardStore } from './state/cmdGuardStore'
 import { useSearchBarStore } from './state/searchBarStore'
 import { useKeybindings } from './hooks/useKeybindings'
-import { focusSession, getTerminalSelection, terminalPaste } from './hooks/useTerminalSession'
+import { getTerminalSelection, terminalPaste } from './hooks/useTerminalSession'
 import { showCopiedToast } from './components/ClipboardToast'
 import { withViewTransition } from './lib/viewTransition'
 import { addSessionWithFocus, activateSession, focusIfSoleSession } from './lib/sessionFocus'
@@ -97,7 +97,7 @@ export function App(): ReactElement {
         if (workspaceId) setActiveWorkspace(workspaceId)
         setActive(sessionId)
       })
-      requestAnimationFrame(() => focusSession(sessionId))
+      // TerminalPane.useEffect([isActive]) takes the focus from here.
     })
     return unsubscribe
   }, [setActive, setActiveWorkspace])
@@ -115,11 +115,10 @@ export function App(): ReactElement {
     if (target) {
       // Only mark the tab as active. Do NOT lazily spawn — switching workspaces
       // must not implicitly start PTYs. The user activates explicitly to spawn.
+      // TerminalPane.useEffect([isActive]) handles the focus once the new pane
+      // is mounted; `focusIfSoleSession` below is kept for the lazy boot path
+      // where no session is active yet.
       setActive(target)
-      const session = state.sessions[target]
-      if (session && !session.pendingSpawn) {
-        requestAnimationFrame(() => focusSession(target))
-      }
     }
     focusIfSoleSession(activeWorkspaceId)
   }, [activeWorkspaceId, setActive])
@@ -130,7 +129,7 @@ export function App(): ReactElement {
         setActiveWorkspace(workspaceId)
         if (sessionId) setActive(sessionId)
       })
-      if (sessionId) requestAnimationFrame(() => focusSession(sessionId))
+      // TerminalPane.useEffect([isActive]) takes the focus from here.
     }
     const unsubscribe = window.ws.notifications.onPush((event) => {
       pushNotif(event)

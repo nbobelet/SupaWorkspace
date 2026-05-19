@@ -1,6 +1,14 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import { toast } from 'sonner'
-import { Settings as SettingsIcon, ChevronDown, ChevronRight, X } from 'lucide-react'
+import {
+  Settings as SettingsIcon,
+  ChevronDown,
+  ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  FolderPlus,
+  X,
+} from 'lucide-react'
 import {
   DndContext,
   KeyboardSensor,
@@ -18,7 +26,6 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useWorkspaceStore } from '../state/workspaceStore'
-import { useNotificationStore } from '../state/notificationStore'
 import { useSessionStore, useWorkspaceWorstStatus, scopeOrder } from '../state/sessionStore'
 import { getSessionStatus } from '../state/sessionStatus'
 import { useInlineRename } from '../hooks/useInlineRename'
@@ -27,8 +34,9 @@ import { clampMenuPosition, VIEWPORT_MARGIN } from '../lib/menuPosition'
 import { WorkspaceSettingsMenu } from './WorkspaceSettingsMenu'
 import { StatusIcon } from './StatusIcon'
 import { TerminalTypeIcon } from './TerminalTypeIcon'
-import { activateSession } from '../lib/sessionFocus'
+import { jumpToSession, jumpToWorkspace } from '../lib/sessionFocus'
 import { closeSession } from '../lib/closeSession'
+import { computeToggleAll } from '../lib/workspaceAccordion'
 import type { Workspace } from '@shared/workspace'
 
 interface ContextMenuState {
@@ -45,8 +53,6 @@ export function WorkspaceSidebar(): ReactElement {
   const removeWorkspace = useWorkspaceStore((s) => s.removeWorkspace)
   const reorderWorkspaces = useWorkspaceStore((s) => s.reorderWorkspaces)
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace)
-  const clearForWorkspace = useNotificationStore((s) => s.clearForWorkspace)
-
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -68,24 +74,13 @@ export function WorkspaceSidebar(): ReactElement {
   const [settingsOpenFor, setSettingsOpenFor] = useState<string | null>(null)
   const setColor = useWorkspaceStore((s) => s.setColor)
 
-  // Accordion expanded state — active workspace starts expanded
+  // Accordion expanded state — active workspace starts expanded; switching
+  // workspaces no longer mutates the accordion (user-controlled only) so a
+  // freshly-activated workspace keeps whatever expand state it had. The
+  // "Expand all / Collapse all" header button is the single bulk control.
   const [expandedIds, setExpandedIds] = useState<Set<string>>(
     () => new Set(activeWorkspaceId ? [activeWorkspaceId] : []),
   )
-  const prevActiveRef = useRef<string | null>(activeWorkspaceId ?? null)
-
-  // When the active workspace changes, expand it and collapse the previous one
-  useEffect(() => {
-    if (!activeWorkspaceId) return
-    const prevId = prevActiveRef.current
-    prevActiveRef.current = activeWorkspaceId
-    setExpandedIds((prev) => {
-      const next = new Set(prev)
-      if (prevId && prevId !== activeWorkspaceId) next.delete(prevId)
-      next.add(activeWorkspaceId)
-      return next
-    })
-  }, [activeWorkspaceId])
 
   const toggleExpand = useCallback((id: string) => {
     setExpandedIds((prev) => {
@@ -95,6 +90,15 @@ export function WorkspaceSidebar(): ReactElement {
       return next
     })
   }, [])
+
+  const workspaceIds = useMemo(() => workspaces.map((w) => w.id), [workspaces])
+  const toggleAllResult = useMemo(
+    () => computeToggleAll(workspaceIds, expandedIds),
+    [workspaceIds, expandedIds],
+  )
+  const toggleAll = useCallback(() => {
+    setExpandedIds(computeToggleAll(workspaceIds, expandedIds).next)
+  }, [workspaceIds, expandedIds])
 
   const rename = useInlineRename(async (id, newName) => {
     const updated = await window.ws.workspace.rename(id, newName)
@@ -169,14 +173,33 @@ export function WorkspaceSidebar(): ReactElement {
     <aside className="flex w-60 flex-col border-r border-border bg-bg-sunken">
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted">Workspaces</span>
-        <button
-          type="button"
-          onClick={openWorkspace}
-          title="Open workspace"
-          className="rounded-sm border border-border bg-bg-elevated px-2 py-0.5 text-xs hover:border-border-strong"
-        >
-          + Open
-        </button>
+        <div className="flex items-center gap-1">
+          {workspaces.length > 0 && (
+            <button
+              type="button"
+              onClick={toggleAll}
+              title={toggleAllResult.allExpanded ? 'Collapse all workspaces' : 'Expand all workspaces'}
+              aria-label={toggleAllResult.allExpanded ? 'Collapse all workspaces' : 'Expand all workspaces'}
+              aria-pressed={toggleAllResult.allExpanded}
+              className="inline-flex items-center rounded-sm border border-border bg-bg-elevated p-1 hover:border-border-strong"
+            >
+              {toggleAllResult.allExpanded ? (
+                <ChevronsDownUp size={14} aria-hidden="true" />
+              ) : (
+                <ChevronsUpDown size={14} aria-hidden="true" />
+              )}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={openWorkspace}
+            title="Open workspace"
+            aria-label="Open workspace"
+            className="inline-flex items-center rounded-sm border border-border bg-bg-elevated p-1 hover:border-border-strong"
+          >
+            <FolderPlus size={14} aria-hidden="true" />
+          </button>
+        </div>
       </div>
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -198,8 +221,7 @@ export function WorkspaceSidebar(): ReactElement {
                 onRenameCommit={rename.commitRename}
                 onRenameCancel={rename.cancelRename}
                 onActivate={() => {
-                  withViewTransition(() => setActiveWorkspace(w.id))
-                  clearForWorkspace(w.id)
+                  jumpToWorkspace(w.id)
                 }}
                 onContextMenu={handleContextMenu}
                 settingsOpen={settingsOpenFor === w.id}
@@ -425,7 +447,7 @@ function WorkspaceTile({
                     <button
                       type="button"
                       className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-                      onClick={() => void activateSession(sid)}
+                      onClick={() => void jumpToSession(sid)}
                     >
                       <span className="shrink-0 text-muted">
                         <TerminalTypeIcon type={session.type} size={11} />

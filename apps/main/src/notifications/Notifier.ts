@@ -23,11 +23,21 @@ export class Notifier {
   // so notifications only fire when there was actually a user request.
   private readonly hadInputSinceIdle = new Set<string>()
 
+  // Mutable callback (not constructor-final) so the main process can wire it
+  // AFTER both Notifier and SessionManager are constructed — they have a
+  // mutual dependency (sessionManager.onState calls notifier.handleStateChange,
+  // and this callback calls back into sessionManager.markDone). Late-bind
+  // dodges the cycle without using a deferred ref pattern.
+  public onRequestComplete?: (sessionId: string) => void
+
   constructor(
     private readonly getMainWindow: () => BrowserWindow | null,
     private readonly workspaceStore: WorkspaceStore,
     private readonly now: () => number = Date.now,
-  ) {}
+    onRequestComplete?: (sessionId: string) => void,
+  ) {
+    this.onRequestComplete = onRequestComplete
+  }
 
   registerSession(config: SessionConfig): void {
     this.sessions.set(config.id, config)
@@ -71,7 +81,7 @@ export class Notifier {
 
     if (state === 'asking') {
       this.emit(session, 'user-input-required')
-      this.maybeNotify(session, this.titleFor(session, 'input needed'))
+      this.maybeNotify(session, this.titleFor(session, 'input needed'), 'user-input-required')
       return
     }
 
@@ -82,14 +92,22 @@ export class Notifier {
       const duration = startedAt !== undefined ? this.now() - startedAt : -1
       if (hadInput && startedAt !== undefined && duration >= MIN_RUNNING_MS_FOR_DONE) {
         this.emit(session, 'request-complete')
-        this.maybeNotify(session, this.titleFor(session, 'done'))
+        this.maybeNotify(session, this.titleFor(session, 'done'), 'request-complete')
+        // Signal the state detector to flash the `done` pulse. The detector
+        // owns the auto-revert timer; we just fire the trigger. Wrapped in
+        // try/catch so a faulty wiring never breaks the notification path.
+        try {
+          this.onRequestComplete?.(sessionId)
+        } catch (err) {
+          console.warn('[notifier] onRequestComplete callback threw', err)
+        }
       }
       return
     }
 
     if (state === 'ending' && exitCode !== undefined && exitCode !== null && exitCode !== 0) {
       this.emit(session, 'error')
-      this.maybeNotify(session, this.titleFor(session, `exited ${exitCode}`))
+      this.maybeNotify(session, this.titleFor(session, `exited ${exitCode}`), 'error')
     }
   }
 
@@ -147,9 +165,26 @@ export class Notifier {
     return `${workspace?.name ?? 'workspace'} - ${session.label} : ${status}`
   }
 
-  private maybeNotify(session: SessionConfig, title: string): void {
+  // Suppress the OS toast only for `request-complete` when the window is
+  // focused — the user can already see the terminal output, so a toast is
+  // noise. Asking and error always notify (audible alert is the whole
+  // point: the user may be on another tab / monitor, and these
+  // transitions are time-sensitive). This mirrors the in-app suppression
+  // in `shouldSuppressDoneToast`, which is also restricted to done only.
+  private maybeNotify(
+    session: SessionConfig,
+    title: string,
+    kind: NotificationKind,
+  ): void {
     const win = this.getMainWindow()
-    if (win && win.isFocused() && !win.isMinimized()) return
+    if (
+      kind === 'request-complete' &&
+      win &&
+      win.isFocused() &&
+      !win.isMinimized()
+    ) {
+      return
+    }
     if (!Notification.isSupported()) return
 
     const notification = new Notification({

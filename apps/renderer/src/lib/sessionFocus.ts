@@ -1,5 +1,8 @@
 import { useSessionStore, type RendererSession } from '../state/sessionStore'
+import { useWorkspaceStore } from '../state/workspaceStore'
+import { useNotificationStore } from '../state/notificationStore'
 import { focusSession } from '../hooks/useTerminalSession'
+import { withViewTransition } from './viewTransition'
 
 function isEditableNonXtermFocused(): boolean {
   if (typeof document === 'undefined') return false
@@ -28,7 +31,7 @@ export async function activateSession(id: string): Promise<void> {
     // any in-flight selection / scroll-back.
     if (store.activeId === id) return
     store.setActive(id)
-    requestAnimationFrame(() => focusSession(id))
+    // TerminalPane.useEffect([isActive]) takes the focus from here.
     return
   }
 
@@ -88,19 +91,80 @@ export function addSessionWithFocus(
     window.matchMedia('(prefers-reduced-motion: reduce)').matches
   const scrollBehavior: ScrollBehavior = reduceMotion ? 'auto' : 'smooth'
 
-  // Wait for React to commit the new tab into the DOM before focusing / scrolling.
+  // Wait for React to commit the new tab into the DOM before scrolling its
+  // entry into view in the tab strip. Focus is owned by TerminalPane's
+  // useEffect([isActive]) — the newly-active pane self-focuses once mounted.
   requestAnimationFrame(() => {
-    // Don't steal focus from an editable element the user is actively using
-    // (e.g. the SessionCommandBar textarea). xterm's own canvas/textarea is
-    // exempt — focus theft from xterm is intentional when spawning.
-    if (!isEditableNonXtermFocused()) {
-      focusSession(session.id)
-    }
     const el = document.querySelector(`[data-session-id="${CSS.escape(session.id)}"]`)
     if (el instanceof HTMLElement) {
       el.scrollIntoView({ behavior: scrollBehavior, inline: 'nearest', block: 'nearest' })
     }
   })
+}
+
+/**
+ * Focus the xterm of `sessionId` on the next animation frame. Used by
+ * `TerminalPane` when it mounts (or becomes active) so the user can type
+ * immediately after a tab/workspace switch — no extra click needed.
+ *
+ * Owned by the pane itself so the focus call happens AFTER React has
+ * committed the new tree and `useTerminalSession` has re-attached
+ * `handle.element` to the DOM. Previous orchestration relied on a single
+ * rAF in App.tsx / activateSession that could fire before the new pane's
+ * `useEffect` ran, leaving `term.focus()` to target a detached textarea.
+ *
+ * Skips when an editable element outside xterm currently has focus, so
+ * typing in a rename input / bug-report dialog / settings field is never
+ * stolen by a re-render of the active pane.
+ */
+export function focusActiveSession(sessionId: string): void {
+  if (isEditableNonXtermFocused()) return
+  requestAnimationFrame(() => {
+    if (isEditableNonXtermFocused()) return
+    focusSession(sessionId)
+  })
+}
+
+/**
+ * Click-to-jump entry point for any "tab-like" surface that targets a session
+ * (top SessionTabs strip, sidebar workspace-accordion session row, command
+ * palette, notification toast Open action). Switches the active workspace
+ * first when the session lives in a different one — without this guard,
+ * setActive() flips the session-store activeId but the visible workspace
+ * stays put, leaving the click on a hidden pane.
+ *
+ * Same-workspace clicks degrade to plain activateSession() so the
+ * "click-the-active-pane preserves selection" contract still holds.
+ */
+export async function jumpToSession(sessionId: string): Promise<void> {
+  const session = useSessionStore.getState().sessions[sessionId]
+  if (!session) return
+  const ws = useWorkspaceStore.getState()
+  if (ws.activeWorkspaceId !== session.workspaceId) {
+    withViewTransition(() => ws.setActiveWorkspace(session.workspaceId))
+    useNotificationStore.getState().clearForWorkspace(session.workspaceId)
+  }
+  await activateSession(sessionId)
+}
+
+/**
+ * Click-to-jump entry point for workspace-level tabs (sidebar tile). When the
+ * workspace is already active, the React effect that re-activates the right
+ * session on workspaceId change does NOT fire (no state diff), so the
+ * terminal would stay unfocused — fall back to focusing the workspace's
+ * remembered active session directly. The cross-workspace path defers focus
+ * to the App.tsx workspace-switch effect (which picks the right session and
+ * TerminalPane self-focuses on isActive flip).
+ */
+export function jumpToWorkspace(workspaceId: string): void {
+  const ws = useWorkspaceStore.getState()
+  if (ws.activeWorkspaceId !== workspaceId) {
+    withViewTransition(() => ws.setActiveWorkspace(workspaceId))
+    useNotificationStore.getState().clearForWorkspace(workspaceId)
+    return
+  }
+  const sid = useSessionStore.getState().activeByWorkspace[workspaceId]
+  if (sid) focusActiveSession(sid)
 }
 
 /**

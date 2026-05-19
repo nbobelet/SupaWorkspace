@@ -21,7 +21,7 @@ import { useScopedOrder, useSessionStore, useHighestPriorityTabId } from '../sta
 import { useWorkspaceStore } from '../state/workspaceStore'
 import { useLayoutStore } from '../state/layoutStore'
 import { useInlineRename } from '../hooks/useInlineRename'
-import { addSessionWithFocus, activateSession } from '../lib/sessionFocus'
+import { addSessionWithFocus, activateSession, jumpToSession } from '../lib/sessionFocus'
 import { closeSession } from '../lib/closeSession'
 import { getSessionStatus } from '../state/sessionStatus'
 import { StatusIcon } from './StatusIcon'
@@ -235,6 +235,7 @@ export function SessionTabs(): ReactElement {
                   label={s.label}
                   type={s.type}
                   status={getSessionStatus(s.state)}
+                  isDone={s.state === 'done'}
                   badgeCount={s.badgeCount}
                   isActive={id === activeId}
                   isMostUrgent={id === mostUrgentId}
@@ -244,7 +245,7 @@ export function SessionTabs(): ReactElement {
                   onRenameCommit={() => void rename.commitRename(id)}
                   onRenameCancel={rename.cancelRename}
                   onActivate={() => {
-                    void activateSession(id)
+                    void jumpToSession(id)
                   }}
                   onStartRename={() => startRename(id)}
                   onClose={() => closeSession(id)}
@@ -308,6 +309,7 @@ interface SortableTabProps {
   label: string
   type: SessionType
   status: ReturnType<typeof getSessionStatus>
+  isDone: boolean
   badgeCount: number
   isActive: boolean
   isMostUrgent: boolean
@@ -327,6 +329,7 @@ function SortableTab({
   label,
   type,
   status,
+  isDone,
   badgeCount,
   isActive,
   isMostUrgent,
@@ -365,12 +368,20 @@ function SortableTab({
       ].join(' ')
     : ''
 
+  // Brief accent ring while the session is in `done` state (1.5s transient
+  // pulse driven by the main-process detector). Skip the ring when the tab
+  // is already most-urgent (urgentClasses applies a competing ring already).
+  const doneClasses = isDone && !isMostUrgent
+    ? 'ring-1 ring-accent/50 motion-safe:animate-pulse'
+    : ''
+
   return (
     <div
       ref={setNodeRef}
       style={style}
       data-priority={status}
       data-most-urgent={isMostUrgent ? 'true' : undefined}
+      data-done={isDone ? 'true' : undefined}
       data-session-id={id}
       className={[
         'group flex shrink-0 items-center gap-2 rounded-sm border px-2 py-1 transition-transform',
@@ -378,6 +389,7 @@ function SortableTab({
           ? 'border-accent bg-bg-elevated text-fg'
           : 'border-border bg-bg-elevated/40 text-fg-subtle hover:border-border-strong hover:text-fg',
         urgentClasses,
+        doneClasses,
         isDragging ? 'z-10' : '',
       ].join(' ')}
       aria-current={isActive ? 'true' : undefined}

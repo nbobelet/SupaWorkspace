@@ -14,7 +14,7 @@ describe('SessionType', () => {
 
 describe('SessionState', () => {
   it('accepts every valid state', () => {
-    for (const state of ['idle', 'running', 'asking', 'ending'] as const) {
+    for (const state of ['idle', 'running', 'asking', 'done', 'ending'] as const) {
       expect(SessionState.parse(state)).toBe(state)
     }
   })

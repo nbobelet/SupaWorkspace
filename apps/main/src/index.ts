@@ -6,7 +6,7 @@ import { SessionManager } from './pty/SessionManager'
 import { WorkspaceStore } from './workspace/WorkspaceStore'
 import { Notifier } from './notifications/Notifier'
 import { NotesStore } from './notes/NotesStore'
-import { SessionSnapshotStore } from './sessions-snapshot/SessionSnapshotStore'
+import { SupaTTYStore } from './supatty/SupaTTYStore'
 import { CmdGuardStore } from './cmd-guard/CmdGuardStore'
 import { BugReportStore } from './bug-report/BugReportStore'
 import { SettingsStore } from './settings/SettingsStore'
@@ -109,7 +109,7 @@ void app.whenReady().then(async () => {
 
   const workspaceStore = new WorkspaceStore()
   const notesStore = new NotesStore()
-  const snapshotStore = new SessionSnapshotStore()
+  const supattyStore = new SupaTTYStore({ userDataDir: app.getPath('userData') })
   const cmdGuardStore = new CmdGuardStore()
   const bugReportStore = new BugReportStore({
     isPackaged: app.isPackaged,
@@ -132,11 +132,15 @@ void app.whenReady().then(async () => {
     },
     onUserInput: (sessionId) => notifier.markUserInput(sessionId),
     onSessionsChanged: (configs) => {
-      snapshotStore.save(
+      supattyStore.saveAllFromFlat(
         configs.map((c) => ({ workspaceId: c.workspaceId, type: c.type, label: c.label })),
       )
     },
   })
+  // Late-bind the request-complete pulse: notifier emits, detector pulses.
+  // Construction is cyclic (sessionManager.onState → notifier; notifier's
+  // callback → sessionManager.markDone) so we wire it post-construction.
+  notifier.onRequestComplete = (sessionId) => sessionManager.markDone(sessionId)
 
   registerSessionIpc({
     sessionManager,
@@ -144,10 +148,10 @@ void app.whenReady().then(async () => {
     onSpawn: (cfg) => notifier.registerSession(cfg),
     onRename: (cfg) => notifier.updateSession(cfg),
   })
-  registerWorkspaceIpc({ workspaceStore, sessionManager, getMainWindow })
+  registerWorkspaceIpc({ workspaceStore, sessionManager, notesStore, supattyStore, getMainWindow })
   registerPermissionsIpc({ workspaceStore, getMainWindow, notifier })
   registerNotesIpc({ notesStore })
-  registerSessionSnapshotIpc({ snapshotStore })
+  registerSessionSnapshotIpc({ supattyStore })
   registerCmdGuardIpc({ cmdGuardStore })
   registerBugReportIpc({ bugReportStore })
   registerSettingsIpc({ settingsStore })
@@ -161,7 +165,7 @@ void app.whenReady().then(async () => {
   })
 
   app.on('before-quit', () => {
-    snapshotStore.lock()
+    supattyStore.lock()
     sessionManager.killAll()
   })
 })
