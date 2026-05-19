@@ -33,8 +33,10 @@ describe('WorkspaceTreeNode', () => {
     expect(parsed.kind).toBe('workspace')
     if (parsed.kind !== 'workspace') throw new Error('narrowing failed')
     const subApp = parsed.children[0]
+    if (subApp?.kind !== 'sub-app') throw new Error('sub-app child missing')
     expect(subApp.kind).toBe('sub-app')
     const tab = subApp.children[0]
+    if (tab?.kind !== 'tab') throw new Error('tab child missing')
     expect(tab.kind).toBe('tab')
     expect(tab.sessionId).toBe(sessionId)
     expect(tab.status).toBe('running')
