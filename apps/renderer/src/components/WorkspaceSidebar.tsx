@@ -36,6 +36,7 @@ import {
 } from '../state/sessionStore'
 import { getSessionStatus } from '../state/sessionStatus'
 import { useInlineRename } from '../hooks/useInlineRename'
+import { useSidebarKeyboard } from '../hooks/useSidebarKeyboard'
 import { withViewTransition } from '../lib/viewTransition'
 import { clampMenuPosition, VIEWPORT_MARGIN } from '../lib/menuPosition'
 import { WorkspaceSettingsMenu } from './WorkspaceSettingsMenu'
@@ -166,14 +167,30 @@ export function WorkspaceSidebar(): ReactElement {
     return initial
   })
 
-  const toggleExpand = useCallback((id: string) => {
-    setExpandedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }, [])
+  const toggleSubAppExpandedStore = useWorkspaceStore((s) => s.toggleSubAppExpanded)
+  const toggleExpand = useCallback(
+    (id: string) => {
+      // Sub-app keys (`wsId:subAppId`) propagate to the store — single source
+      // of truth for sub-app expand state since Wave A. Workspace ids (no
+      // colon) stay in the local Set, which still owns workspace-level expand.
+      const colon = id.indexOf(':')
+      if (colon !== -1) {
+        const wsId = id.slice(0, colon)
+        const saId = id.slice(colon + 1)
+        if (saId === 'supatty' || saId === 'notes') {
+          toggleSubAppExpandedStore(wsId, saId)
+        }
+        return
+      }
+      setExpandedIds((prev) => {
+        const next = new Set(prev)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return next
+      })
+    },
+    [toggleSubAppExpandedStore],
+  )
 
   const workspaceIds = useMemo(() => workspaces.map((w) => w.id), [workspaces])
   const toggleAllResult = useMemo(
@@ -270,10 +287,38 @@ export function WorkspaceSidebar(): ReactElement {
   const sessions = useSessionStore((s) => s.sessions)
   const order = useSessionStore((s) => s.order)
   const activeSessionId = useSessionStore((s) => s.activeId)
+
+  // Sub-app expand lives in the store since Wave A. Mirror it into the local
+  // Set so the existing tree builder keeps reading from a single Set without
+  // breaking signature. One-way: store → local. UI mouse-click toggles still
+  // flow through the local Set (toggleExpand) AND dispatch to the store for
+  // colon keys (see below).
+  const expandedSubApps = useWorkspaceStore((s) => s.expandedSubApps)
+  useEffect(() => {
+    setExpandedIds((prev) => {
+      const next = new Set<string>()
+      for (const key of prev) {
+        if (!key.includes(':')) next.add(key)
+      }
+      for (const [wsId, subapps] of Object.entries(expandedSubApps)) {
+        for (const [saId, expanded] of Object.entries(subapps)) {
+          if (expanded) next.add(`${wsId}:${saId}`)
+        }
+      }
+      return next
+    })
+  }, [expandedSubApps])
+
   const tree = useMemo(
     () => buildWorkspaceTree(workspaces, sessions, order, expandedIds, activeSessionId),
     [workspaces, sessions, order, expandedIds, activeSessionId],
   )
+
+  // Register global keyboard chords ($mod+Tab → next tab within sub-app;
+  // $mod+Shift+Tab → next sub-app within workspace). Tree-focused nav
+  // (ArrowUp/Down/Enter/Home/End on rows) returned by the hook is not yet
+  // wired into the row elements — that's a follow-up tightening pass.
+  useSidebarKeyboard(tree)
 
   return (
     <aside className="flex w-60 flex-col border-r border-border bg-bg-sunken">
