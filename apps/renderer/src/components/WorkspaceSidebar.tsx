@@ -9,6 +9,7 @@ import {
   FolderPlus,
   LayoutDashboard,
   ListTodo,
+  Plus,
   StickyNote,
   Terminal,
   X,
@@ -46,7 +47,7 @@ import { NotesOverlay } from './NotesOverlay'
 import { WorkspaceSettingsMenu } from './WorkspaceSettingsMenu'
 import { StatusIcon } from './StatusIcon'
 import { TerminalTypeIcon } from './TerminalTypeIcon'
-import { jumpToSession } from '../lib/sessionFocus'
+import { addSessionWithFocus, jumpToSession } from '../lib/sessionFocus'
 import { closeSession } from '../lib/closeSession'
 import { computeToggleAll } from '../lib/workspaceAccordion'
 import type { Workspace, WorkspaceTreeNode } from '@shared/workspace'
@@ -196,6 +197,44 @@ export function WorkspaceSidebar(): ReactElement {
 
   const toggleSubAppExpandedStore = useWorkspaceStore((s) => s.toggleSubAppExpanded)
   const setActiveSubApp = useWorkspaceStore((s) => s.setActiveSubApp)
+  const setSubAppExpanded = useWorkspaceStore((s) => s.setSubAppExpanded)
+  const lastUsedType = useSessionStore((s) => s.lastUsedType)
+
+  // Bring a workspace's terminal sub-app to the foreground: switch the active
+  // workspace + sub-app to supatty and reveal its session list. This is the
+  // missing return path from Dashboard/TODO — those views own the body, and
+  // before this the SupaTTY row only toggled its accordion, never the view.
+  const activateSupatty = useCallback(
+    (workspaceId: string) => {
+      setActiveWorkspace(workspaceId)
+      setActiveSubApp(workspaceId, 'supatty')
+      setSubAppExpanded(workspaceId, 'supatty', true)
+    },
+    [setActiveWorkspace, setActiveSubApp, setSubAppExpanded],
+  )
+
+  // Quick-action spawn from the sidebar SupaTTY row — works from any view.
+  // Activates the terminal first so the new pane is visible, then spawns the
+  // last-used session type (same convention as Ctrl+T).
+  const quickSpawn = useCallback(
+    async (workspaceId: string) => {
+      activateSupatty(workspaceId)
+      const res = await window.ws.session.spawn({
+        workspaceId,
+        type: lastUsedType,
+        cols: 80,
+        rows: 24,
+      })
+      addSessionWithFocus({
+        id: res.sessionId,
+        workspaceId,
+        type: lastUsedType,
+        label: res.label,
+        state: 'idle',
+      })
+    },
+    [activateSupatty, lastUsedType],
+  )
   const toggleExpand = useCallback(
     (id: string) => {
       // Sub-app keys (`wsId:subAppId`) propagate to the store — single source
@@ -410,6 +449,8 @@ export function WorkspaceSidebar(): ReactElement {
                     setActiveSubApp(workspaceId, 'dashboard')
                     setActiveWorkspace(workspaceId)
                   }}
+                  onActivateSupatty={activateSupatty}
+                  onQuickSpawn={(workspaceId) => void quickSpawn(workspaceId)}
                   onOpenNotes={(workspaceId) =>
                     setNotesOverlayFor((prev) => (prev === workspaceId ? null : workspaceId))
                   }
@@ -469,6 +510,8 @@ interface WorkspaceTileProps {
   onRenameCommit: (id: string) => void | Promise<void>
   onRenameCancel: () => void
   onActivateDashboard: (workspaceId: string) => void
+  onActivateSupatty: (workspaceId: string) => void
+  onQuickSpawn: (workspaceId: string) => void
   onOpenNotes: (workspaceId: string) => void
   onActivateTodo: (workspaceId: string) => void
   focusedRow: RowKey | null
@@ -494,6 +537,8 @@ function WorkspaceTile({
   onRenameCommit,
   onRenameCancel,
   onActivateDashboard,
+  onActivateSupatty,
+  onQuickSpawn,
   onOpenNotes,
   onActivateTodo,
   focusedRow,
@@ -655,7 +700,12 @@ function WorkspaceTile({
                     ? () => onActivateTodo(w.id)
                     : subAppNode.subAppId === 'dashboard'
                       ? () => onActivateDashboard(w.id)
-                      : undefined
+                      : subAppNode.subAppId === 'supatty'
+                        ? () => onActivateSupatty(w.id)
+                        : undefined
+              }
+              onQuickSpawn={
+                subAppNode.subAppId === 'supatty' ? () => onQuickSpawn(w.id) : undefined
               }
               focused={
                 focusedRow === `subapp:${subAppNode.workspaceId}:${subAppNode.subAppId}`
@@ -693,6 +743,7 @@ interface SubAppRowProps {
   hasChildren: boolean
   onToggleExpand: () => void
   onActivate?: () => void
+  onQuickSpawn?: () => void
   focused: boolean
   keyHandlers: TreeKeyHandlers
   children?: React.ReactNode
@@ -712,6 +763,7 @@ function SubAppRow({
   hasChildren,
   onToggleExpand,
   onActivate,
+  onQuickSpawn,
   focused,
   keyHandlers,
   children,
@@ -795,6 +847,20 @@ function SubAppRow({
           </span>
           <span className="min-w-0 flex-1 truncate">{label}</span>
         </button>
+        {onQuickSpawn && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onQuickSpawn()
+            }}
+            aria-label={`New ${label} session`}
+            title={`New ${label} session`}
+            className="shrink-0 rounded-sm p-0.5 text-muted opacity-0 hover:text-fg group-hover/subapp:opacity-100 focus-visible:opacity-100"
+          >
+            <Plus size={12} aria-hidden="true" />
+          </button>
+        )}
       </div>
       {children}
     </li>
