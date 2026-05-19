@@ -7,6 +7,7 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   FolderPlus,
+  ListTodo,
   StickyNote,
   Terminal,
   X,
@@ -116,6 +117,13 @@ function buildWorkspaceTree(
         {
           kind: 'sub-app',
           workspaceId: w.id,
+          subAppId: 'todo',
+          expanded: expandedIds.has(subAppKey(w.id, 'todo')),
+          children: [],
+        },
+        {
+          kind: 'sub-app',
+          workspaceId: w.id,
           subAppId: 'notes',
           expanded: expandedIds.has(subAppKey(w.id, 'notes')),
           children: [],
@@ -171,6 +179,7 @@ export function WorkspaceSidebar(): ReactElement {
   })
 
   const toggleSubAppExpandedStore = useWorkspaceStore((s) => s.toggleSubAppExpanded)
+  const setActiveSubApp = useWorkspaceStore((s) => s.setActiveSubApp)
   const toggleExpand = useCallback(
     (id: string) => {
       // Sub-app keys (`wsId:subAppId`) propagate to the store — single source
@@ -180,7 +189,7 @@ export function WorkspaceSidebar(): ReactElement {
       if (colon !== -1) {
         const wsId = id.slice(0, colon)
         const saId = id.slice(colon + 1)
-        if (saId === 'supatty' || saId === 'notes') {
+        if (saId === 'supatty' || saId === 'notes' || saId === 'todo') {
           toggleSubAppExpandedStore(wsId, saId)
         }
         return
@@ -386,6 +395,10 @@ export function WorkspaceSidebar(): ReactElement {
                   onOpenNotes={(workspaceId) =>
                     setNotesOverlayFor((prev) => (prev === workspaceId ? null : workspaceId))
                   }
+                  onActivateTodo={(workspaceId) => {
+                    setActiveSubApp(workspaceId, 'todo')
+                    setActiveWorkspace(workspaceId)
+                  }}
                   focusedRow={focusedRow}
                   getTreeKeyHandlers={getTreeKeyHandlers}
                   onContextMenu={handleContextMenu}
@@ -439,6 +452,7 @@ interface WorkspaceTileProps {
   onRenameCancel: () => void
   onActivate: () => void
   onOpenNotes: (workspaceId: string) => void
+  onActivateTodo: (workspaceId: string) => void
   focusedRow: RowKey | null
   getTreeKeyHandlers: (node: WorkspaceTreeNode) => TreeKeyHandlers
   onContextMenu: (e: React.MouseEvent, w: Workspace) => void
@@ -463,6 +477,7 @@ function WorkspaceTile({
   onRenameCancel,
   onActivate,
   onOpenNotes,
+  onActivateTodo,
   focusedRow,
   getTreeKeyHandlers,
   onContextMenu,
@@ -616,7 +631,11 @@ function WorkspaceTile({
               hasChildren={subAppNode.children.length > 0}
               onToggleExpand={() => onToggleSubApp(subAppNode.subAppId)}
               onActivate={
-                subAppNode.subAppId === 'notes' ? () => onOpenNotes(w.id) : undefined
+                subAppNode.subAppId === 'notes'
+                  ? () => onOpenNotes(w.id)
+                  : subAppNode.subAppId === 'todo'
+                    ? () => onActivateTodo(w.id)
+                    : undefined
               }
               focused={
                 focusedRow === `subapp:${subAppNode.workspaceId}:${subAppNode.subAppId}`
@@ -662,6 +681,7 @@ interface SubAppRowProps {
 const SUB_APP_LABEL: Record<SubAppId, string> = {
   supatty: 'SupaTTY',
   notes: 'Notes',
+  todo: 'TODO',
 }
 
 function SubAppRow({
@@ -744,6 +764,8 @@ function SubAppRow({
           <span className="shrink-0 text-muted">
             {subAppId === 'supatty' ? (
               <Terminal size={12} aria-hidden="true" />
+            ) : subAppId === 'todo' ? (
+              <ListTodo size={12} aria-hidden="true" />
             ) : (
               <StickyNote size={12} aria-hidden="true" />
             )}

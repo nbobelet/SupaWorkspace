@@ -26,6 +26,7 @@ import type { SessionManager } from '../pty/SessionManager'
 import type { WorkspaceStore } from '../workspace/WorkspaceStore'
 import type { NotesStore } from '../notes/NotesStore'
 import type { SupaTTYStore } from '../supatty/SupaTTYStore'
+import type { TodoStore } from '../todo/TodoStore'
 
 const CLAUDE_MD = 'CLAUDE.md'
 const CLAUDE_SETTINGS = '.claude/settings.json'
@@ -35,9 +36,10 @@ export function registerWorkspaceIpc(opts: {
   sessionManager: SessionManager
   notesStore: NotesStore
   supattyStore: SupaTTYStore
+  todoStore: TodoStore
   getMainWindow: () => BrowserWindow | null
 }): () => void {
-  const { workspaceStore, sessionManager, notesStore, supattyStore, getMainWindow } = opts
+  const { workspaceStore, sessionManager, notesStore, supattyStore, todoStore, getMainWindow } = opts
 
   ipcMain.handle(IpcChannel.WorkspaceList, async (): Promise<WorkspaceListResponse> => {
     return { workspaces: workspaceStore.list() }
@@ -67,6 +69,7 @@ export function registerWorkspaceIpc(opts: {
     // disappears, otherwise the entries become orphans nothing references.
     supattyStore.remove(req.workspaceId)
     notesStore.remove(req.workspaceId)
+    todoStore.remove(req.workspaceId)
     workspaceStore.remove(req.workspaceId)
   })
 

@@ -5,13 +5,14 @@ import { PaneMosaic } from './components/PaneMosaic'
 import { WorkspaceSidebar } from './components/WorkspaceSidebar'
 import { SessionTabs } from './components/SessionTabs'
 import { LayoutSwitcher } from './components/LayoutSwitcher'
+import { TodoPane } from './sub-apps/todo'
 import { SettingsPanel } from './components/settings/SettingsPanel'
 import { CommandPalette } from './components/CommandPalette'
 import { CmdGuardModal } from './components/CmdGuardModal'
 import { BugReportButton } from './components/BugReportButton'
 import { BugReportDialog } from './components/BugReportDialog'
 import { useScopedOrder, useSessionStore } from './state/sessionStore'
-import { useWorkspaceStore } from './state/workspaceStore'
+import { useActiveSubApp, useWorkspaceStore } from './state/workspaceStore'
 import { useLayoutStore } from './state/layoutStore'
 import { useNotificationStore } from './state/notificationStore'
 import { usePaletteStore } from './state/paletteStore'
@@ -31,6 +32,8 @@ export function App(): ReactElement {
   const setWorkspaces = useWorkspaceStore((s) => s.setWorkspaces)
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace)
+  const activeSubApp = useActiveSubApp(activeWorkspaceId ?? '')
+  const isTodoActive = !!activeWorkspaceId && activeSubApp === 'todo'
 
   const setActive = useSessionStore((s) => s.setActive)
   const activeId = useSessionStore((s) => s.activeId)
@@ -289,11 +292,15 @@ export function App(): ReactElement {
             <span>Settings</span>
           </button>
           <BugReportButton />
-          <LayoutSwitcher />
+          {!isTodoActive && <LayoutSwitcher />}
         </header>
-        <SessionTabs />
+        {!isTodoActive && <SessionTabs />}
         <div className="flex-1 overflow-hidden">
-          <PaneMosaic />
+          {isTodoActive && activeWorkspaceId ? (
+            <TodoPane workspaceId={activeWorkspaceId} />
+          ) : (
+            <PaneMosaic />
+          )}
         </div>
         <footer className="flex items-center justify-between border-t border-border bg-bg-sunken px-3 py-1 text-[10px] text-muted">
           <span>

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { SessionState, SessionType } from './session'
+import { Column, Task, TodoState } from './todo'
 import { PathGrant, Workspace } from './workspace'
 
 export const IpcChannel = {
@@ -38,6 +39,12 @@ export const IpcChannel = {
   BugReportRevealDir: 'bug-report:reveal-dir',
   SettingsGet: 'settings:get',
   SettingsUpdate: 'settings:update',
+  TodoGet: 'todo:get',
+  TodoCreateTask: 'todo:create-task',
+  TodoUpdateTask: 'todo:update-task',
+  TodoDeleteTask: 'todo:delete-task',
+  TodoReorder: 'todo:reorder',
+  TodoSetColumns: 'todo:set-columns',
 } as const
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel]
 
@@ -290,3 +297,61 @@ export const SettingsUpdatePayloadZ = z.object({
     .optional(),
 })
 export type SettingsUpdatePayload = z.infer<typeof SettingsUpdatePayloadZ>
+
+/**
+ * `todo:get` returns the workspace's full TODO state. `fallbackUsed`
+ * surfaces whether the persistence layer wrote/read from a fallback path
+ * (e.g. userData when the primary location was not writable); the
+ * renderer shows a one-shot toast when this flips to true. Today the
+ * SubAppStore writes to electron-store under userData unconditionally, so
+ * the flag is always `false` — kept on the response shape so the renderer
+ * does not need a wire-format migration if a future store ever attempts
+ * the workspace.rootPath co-location strategy.
+ */
+export const TodoGetRequest = z.object({
+  workspaceId: z.string().uuid(),
+})
+export type TodoGetRequest = z.infer<typeof TodoGetRequest>
+
+export const TodoGetResponse = z.object({
+  state: TodoState,
+  fallbackUsed: z.boolean(),
+})
+export type TodoGetResponse = z.infer<typeof TodoGetResponse>
+
+export const TodoCreateTaskRequest = z.object({
+  workspaceId: z.string().uuid(),
+  task: Task,
+})
+export type TodoCreateTaskRequest = z.infer<typeof TodoCreateTaskRequest>
+
+export const TodoUpdateTaskRequest = z.object({
+  workspaceId: z.string().uuid(),
+  task: Task,
+})
+export type TodoUpdateTaskRequest = z.infer<typeof TodoUpdateTaskRequest>
+
+export const TodoDeleteTaskRequest = z.object({
+  workspaceId: z.string().uuid(),
+  taskId: z.string().uuid(),
+})
+export type TodoDeleteTaskRequest = z.infer<typeof TodoDeleteTaskRequest>
+
+export const TodoReorderRequest = z.object({
+  workspaceId: z.string().uuid(),
+  taskId: z.string().uuid(),
+  toColumnId: z.string().min(1),
+  toIndex: z.number().int().min(0),
+})
+export type TodoReorderRequest = z.infer<typeof TodoReorderRequest>
+
+export const TodoSetColumnsRequest = z.object({
+  workspaceId: z.string().uuid(),
+  columns: z.array(Column).min(1),
+})
+export type TodoSetColumnsRequest = z.infer<typeof TodoSetColumnsRequest>
+
+export const TodoStateResponse = z.object({
+  state: TodoState,
+})
+export type TodoStateResponse = z.infer<typeof TodoStateResponse>

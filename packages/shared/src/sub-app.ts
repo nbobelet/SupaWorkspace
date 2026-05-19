@@ -6,7 +6,7 @@ import { z } from 'zod'
  * subclass on the main side. Adding a new sub-app = new entry here +
  * matching domain types + a store wired into `index.ts`.
  */
-export const SubAppId = z.enum(['supatty', 'notes'])
+export const SubAppId = z.enum(['supatty', 'notes', 'todo'])
 export type SubAppId = z.infer<typeof SubAppId>
 
 /**

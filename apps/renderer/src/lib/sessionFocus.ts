@@ -25,6 +25,12 @@ export async function activateSession(id: string): Promise<void> {
   const session = store.sessions[id]
   if (!session) return
 
+  // Any session activation (tab click, hotkey, notif click) implicitly
+  // brings the workspace's active sub-app back to `supatty` so the user
+  // sees the terminal pane they just asked for, even if they were on the
+  // TODO sub-app a moment ago.
+  useWorkspaceStore.getState().setActiveSubApp(session.workspaceId, 'supatty')
+
   if (!session.pendingSpawn) {
     // Clicking the already-active pane must not re-focus through the
     // follow controller — resync() would call scrollToBottom() and wipe

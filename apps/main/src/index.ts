@@ -7,6 +7,7 @@ import { WorkspaceStore } from './workspace/WorkspaceStore'
 import { Notifier } from './notifications/Notifier'
 import { NotesStore } from './notes/NotesStore'
 import { SupaTTYStore } from './supatty/SupaTTYStore'
+import { TodoStore } from './todo/TodoStore'
 import { CmdGuardStore } from './cmd-guard/CmdGuardStore'
 import { BugReportStore } from './bug-report/BugReportStore'
 import { SettingsStore } from './settings/SettingsStore'
@@ -14,6 +15,7 @@ import { registerSessionIpc } from './ipc/session'
 import { registerWorkspaceIpc } from './ipc/workspace'
 import { registerPermissionsIpc } from './ipc/permissions'
 import { registerNotesIpc } from './ipc/notes'
+import { registerTodoIpc } from './ipc/todo'
 import { registerSessionSnapshotIpc } from './ipc/sessionSnapshot'
 import { registerCmdGuardIpc } from './ipc/cmdGuard'
 import { registerBugReportIpc } from './ipc/bugReport'
@@ -110,6 +112,7 @@ void app.whenReady().then(async () => {
   const workspaceStore = new WorkspaceStore()
   const notesStore = new NotesStore()
   const supattyStore = new SupaTTYStore({ userDataDir: app.getPath('userData') })
+  const todoStore = new TodoStore()
   const cmdGuardStore = new CmdGuardStore()
   const bugReportStore = new BugReportStore({
     isPackaged: app.isPackaged,
@@ -148,9 +151,10 @@ void app.whenReady().then(async () => {
     onSpawn: (cfg) => notifier.registerSession(cfg),
     onRename: (cfg) => notifier.updateSession(cfg),
   })
-  registerWorkspaceIpc({ workspaceStore, sessionManager, notesStore, supattyStore, getMainWindow })
+  registerWorkspaceIpc({ workspaceStore, sessionManager, notesStore, supattyStore, todoStore, getMainWindow })
   registerPermissionsIpc({ workspaceStore, getMainWindow, notifier })
   registerNotesIpc({ notesStore })
+  registerTodoIpc({ todoStore })
   registerSessionSnapshotIpc({ supattyStore })
   registerCmdGuardIpc({ cmdGuardStore })
   registerBugReportIpc({ bugReportStore })

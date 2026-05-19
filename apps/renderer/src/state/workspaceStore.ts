@@ -22,6 +22,7 @@ interface WorkspaceStoreState {
 const SUBAPP_EXPANDED_DEFAULT: Record<SubAppId, boolean> = {
   supatty: true,
   notes: false,
+  todo: false,
 }
 
 export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
