@@ -24,6 +24,8 @@ import {
 import type { Workspace } from '@shared/workspace'
 import type { SessionManager } from '../pty/SessionManager'
 import type { WorkspaceStore } from '../workspace/WorkspaceStore'
+import type { NotesStore } from '../notes/NotesStore'
+import type { SupaTTYStore } from '../supatty/SupaTTYStore'
 
 const CLAUDE_MD = 'CLAUDE.md'
 const CLAUDE_SETTINGS = '.claude/settings.json'
@@ -31,9 +33,11 @@ const CLAUDE_SETTINGS = '.claude/settings.json'
 export function registerWorkspaceIpc(opts: {
   workspaceStore: WorkspaceStore
   sessionManager: SessionManager
+  notesStore: NotesStore
+  supattyStore: SupaTTYStore
   getMainWindow: () => BrowserWindow | null
 }): () => void {
-  const { workspaceStore, sessionManager, getMainWindow } = opts
+  const { workspaceStore, sessionManager, notesStore, supattyStore, getMainWindow } = opts
 
   ipcMain.handle(IpcChannel.WorkspaceList, async (): Promise<WorkspaceListResponse> => {
     return { workspaces: workspaceStore.list() }
@@ -59,6 +63,10 @@ export function registerWorkspaceIpc(opts: {
   ipcMain.handle(IpcChannel.WorkspaceRemove, async (_, raw): Promise<void> => {
     const req = WorkspaceRemoveRequest.parse(raw)
     sessionManager.killAllInWorkspace(req.workspaceId)
+    // Drop per-workspace sub-app payloads before the Workspace metadata
+    // disappears, otherwise the entries become orphans nothing references.
+    supattyStore.remove(req.workspaceId)
+    notesStore.remove(req.workspaceId)
     workspaceStore.remove(req.workspaceId)
   })
 
