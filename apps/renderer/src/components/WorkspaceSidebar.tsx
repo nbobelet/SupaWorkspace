@@ -383,7 +383,9 @@ export function WorkspaceSidebar(): ReactElement {
                   onActivate={() => {
                     jumpToWorkspace(w.id)
                   }}
-                  onOpenNotes={setNotesOverlayFor}
+                  onOpenNotes={(workspaceId) =>
+                    setNotesOverlayFor((prev) => (prev === workspaceId ? null : workspaceId))
+                  }
                   focusedRow={focusedRow}
                   getTreeKeyHandlers={getTreeKeyHandlers}
                   onContextMenu={handleContextMenu}

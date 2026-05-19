@@ -9,8 +9,7 @@ interface NotesOverlayProps {
 
 // Sidebar-anchored Notes overlay. Positioned right of the 240px-wide aside,
 // closes on Escape, outside-pointerdown, or window blur. Reuses `NotesPanel`
-// so the same editor surface serves the sidebar shortcut AND the settings
-// route entry (`NotesTab`).
+// as the single editor surface for the Notes sub-app.
 export function NotesOverlay({ workspaceId, onClose }: NotesOverlayProps): ReactElement {
   const ref = useRef<HTMLDivElement>(null)
 
@@ -21,7 +20,13 @@ export function NotesOverlay({ workspaceId, onClose }: NotesOverlayProps): React
     const onPointerDown = (event: PointerEvent): void => {
       const el = ref.current
       if (!el) return
-      if (event.target instanceof Node && el.contains(event.target)) return
+      const target = event.target
+      if (!(target instanceof Element)) return
+      if (el.contains(target)) return
+      // The Notes sub-app row owns the open/close toggle via its own click
+      // handler. Letting capture-phase pointerdown close here would beat that
+      // click and the toggle would re-open on the same gesture (blink).
+      if (target.closest('[data-sub-app-id="notes"]')) return
       onClose()
     }
     const onBlur = (): void => onClose()
