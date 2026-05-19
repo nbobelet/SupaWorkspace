@@ -28,12 +28,9 @@ import { jumpToSession, jumpToWorkspace } from '../lib/sessionFocus'
  *
  * Wiring into WorkspaceSidebar.tsx is a follow-up — this hook is wire-ready,
  * not pre-wired. App.tsx still calls useKeybindings(); this hook is a sibling,
- * not a replacement.
- *
- * NOTE on $mod+Tab semantics: the existing useKeybindings.ts binds the SAME
- * chord to `cycleSessionNext`. Wiring this hook into App.tsx will require
- * resolving that conflict (most likely by removing the binding from
- * useKeybindings.ts) — that's a follow-up wave, intentionally out of scope.
+ * not a replacement. The $mod+Tab and $mod+Shift+Tab chords are no longer
+ * bound by useKeybindings (cycleSessionNext / cycleSessionPrev dropped) —
+ * this hook now owns them with sub-app-aware semantics.
  */
 
 /** Opaque row key — `workspace:<wsId>` / `subapp:<wsId>:<subAppId>` / `tab:<sessionId>`. */
@@ -195,17 +192,15 @@ function cycleTabWithinCurrentSubApp(): void {
 }
 
 function cycleSubAppWithinCurrentWorkspace(): void {
-  const wsId = useWorkspaceStore.getState().activeWorkspaceId
+  const state = useWorkspaceStore.getState()
+  const wsId = state.activeWorkspaceId
   if (!wsId) return
-  // SubAppId.options is the Zod enum's `readonly [...]` of literal members.
-  const all = SubAppId.options
-  if (all.length <= 1) return
-  // No active-sub-app store yet — emit a window event so the future
-  // sub-app router can pick it up. Decoupled to keep this hook self-contained
-  // (the brief forbids touching any store). Consumers that don't listen are
-  // free to ignore it.
-  const detail = { workspaceId: wsId, direction: 1 as const }
-  window.dispatchEvent(new CustomEvent('sidebar:cycle-subapp', { detail }))
+  const order = SubAppId.options
+  if (order.length <= 1) return
+  const current = state.activeSubAppId[wsId] ?? 'supatty'
+  const idx = order.indexOf(current)
+  const next = order[(idx + 1) % order.length]
+  if (next) state.setActiveSubApp(wsId, next)
 }
 
 // ---------------------------------------------------------------------------
@@ -274,13 +269,12 @@ export function useSidebarKeyboard(tree: readonly WorkspaceTreeNode[]): UseSideb
           event.preventDefault()
           if (node.kind === 'tab') return
           if (!nodeIsExpanded(node)) {
-            // Expansion is owned by the consumer (sidebar holds the
-            // expanded-id set). Re-emit so the consumer can flip it without
-            // this hook owning UI state. Falls back to moving into the first
-            // child if expansion is already wired and reflected in `tree`.
-            window.dispatchEvent(
-              new CustomEvent('sidebar:request-expand', { detail: { rowKey: nodeKey } }),
-            )
+            // Sub-app expand goes through store; workspace expand stays in
+            // sidebar local state (no store action yet — keyboard expand of
+            // workspace nodes is a known V1 gap, mouse click works).
+            if (node.kind === 'sub-app') {
+              useWorkspaceStore.getState().toggleSubAppExpanded(node.workspaceId, node.subAppId)
+            }
             return
           }
           const children = nodeChildren(node)
@@ -291,9 +285,9 @@ export function useSidebarKeyboard(tree: readonly WorkspaceTreeNode[]): UseSideb
         if (key === 'ArrowLeft') {
           event.preventDefault()
           if (node.kind !== 'tab' && nodeIsExpanded(node)) {
-            window.dispatchEvent(
-              new CustomEvent('sidebar:request-collapse', { detail: { rowKey: nodeKey } }),
-            )
+            if (node.kind === 'sub-app') {
+              useWorkspaceStore.getState().toggleSubAppExpanded(node.workspaceId, node.subAppId)
+            }
             return
           }
           const parent = findParentKey(treeRef.current, nodeKey)
@@ -308,11 +302,7 @@ export function useSidebarKeyboard(tree: readonly WorkspaceTreeNode[]): UseSideb
           } else if (target.kind === 'tab') {
             void jumpToSession(target.sessionId)
           } else {
-            // sub-app row: toggle expansion (same channel as ArrowRight/Left).
-            const channel = nodeIsExpanded(target)
-              ? 'sidebar:request-collapse'
-              : 'sidebar:request-expand'
-            window.dispatchEvent(new CustomEvent(channel, { detail: { rowKey: nodeKey } }))
+            useWorkspaceStore.getState().toggleSubAppExpanded(target.workspaceId, target.subAppId)
           }
           return
         }
