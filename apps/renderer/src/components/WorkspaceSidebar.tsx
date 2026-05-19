@@ -7,6 +7,7 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   FolderPlus,
+  LayoutDashboard,
   ListTodo,
   StickyNote,
   Terminal,
@@ -45,7 +46,7 @@ import { NotesOverlay } from './NotesOverlay'
 import { WorkspaceSettingsMenu } from './WorkspaceSettingsMenu'
 import { StatusIcon } from './StatusIcon'
 import { TerminalTypeIcon } from './TerminalTypeIcon'
-import { jumpToSession, jumpToWorkspace } from '../lib/sessionFocus'
+import { jumpToSession } from '../lib/sessionFocus'
 import { closeSession } from '../lib/closeSession'
 import { computeToggleAll } from '../lib/workspaceAccordion'
 import type { Workspace, WorkspaceTreeNode } from '@shared/workspace'
@@ -84,9 +85,17 @@ function buildWorkspaceTree(
   order: readonly string[],
   expandedIds: ReadonlySet<string>,
   activeSessionId: string | null,
+  activeSubAppByWorkspace: Readonly<Record<string, SubAppId>>,
 ): WorkspaceTreeNode[] {
   return workspaces.map<WorkspaceTreeNode>((w) => {
     const scopedIds = scopeOrder([...order], sessions, w.id)
+    // A SupaTTY session is "active" for sidebar purposes only when its
+    // workspace is actually showing the terminal sub-app. Without this gate the
+    // active-session highlight leaks: switching to TODO (or any non-supatty
+    // sub-app) leaves the last SupaTTY leaf styled as active. Default sub-app
+    // is 'supatty' (lazy default — matches useActiveSubApp).
+    const activeSubApp = activeSubAppByWorkspace[w.id] ?? 'supatty'
+    const terminalActive = activeSubApp === 'supatty'
     const supattyChildren: WorkspaceTreeNode[] = []
     for (const sid of scopedIds) {
       const session = sessions[sid]
@@ -96,7 +105,7 @@ function buildWorkspaceTree(
         workspaceId: w.id,
         subAppId: 'supatty',
         sessionId: session.id,
-        active: session.id === activeSessionId,
+        active: terminalActive && session.id === activeSessionId,
         status: session.state,
       })
     }
@@ -105,6 +114,13 @@ function buildWorkspaceTree(
       workspaceId: w.id,
       expanded: expandedIds.has(w.id),
       children: [
+        {
+          kind: 'sub-app',
+          workspaceId: w.id,
+          subAppId: 'dashboard',
+          expanded: expandedIds.has(subAppKey(w.id, 'dashboard')),
+          children: [],
+        },
         {
           kind: 'sub-app',
           workspaceId: w.id,
@@ -189,7 +205,7 @@ export function WorkspaceSidebar(): ReactElement {
       if (colon !== -1) {
         const wsId = id.slice(0, colon)
         const saId = id.slice(colon + 1)
-        if (saId === 'supatty' || saId === 'notes' || saId === 'todo') {
+        if (saId === 'supatty' || saId === 'notes' || saId === 'todo' || saId === 'dashboard') {
           toggleSubAppExpandedStore(wsId, saId)
         }
         return
@@ -299,6 +315,7 @@ export function WorkspaceSidebar(): ReactElement {
   const sessions = useSessionStore((s) => s.sessions)
   const order = useSessionStore((s) => s.order)
   const activeSessionId = useSessionStore((s) => s.activeId)
+  const activeSubAppId = useWorkspaceStore((s) => s.activeSubAppId)
 
   // Sub-app expand lives in the store since Wave A. Mirror it into the local
   // Set so the existing tree builder keeps reading from a single Set without
@@ -322,8 +339,8 @@ export function WorkspaceSidebar(): ReactElement {
   }, [expandedSubApps])
 
   const tree = useMemo(
-    () => buildWorkspaceTree(workspaces, sessions, order, expandedIds, activeSessionId),
-    [workspaces, sessions, order, expandedIds, activeSessionId],
+    () => buildWorkspaceTree(workspaces, sessions, order, expandedIds, activeSessionId, activeSubAppId),
+    [workspaces, sessions, order, expandedIds, activeSessionId, activeSubAppId],
   )
 
   // Global chords ($mod+Tab cycle tab within sub-app, $mod+Shift+Tab cycle
@@ -389,8 +406,9 @@ export function WorkspaceSidebar(): ReactElement {
                   onRenameChange={rename.setRenameValue}
                   onRenameCommit={rename.commitRename}
                   onRenameCancel={rename.cancelRename}
-                  onActivate={() => {
-                    jumpToWorkspace(w.id)
+                  onActivateDashboard={(workspaceId) => {
+                    setActiveSubApp(workspaceId, 'dashboard')
+                    setActiveWorkspace(workspaceId)
                   }}
                   onOpenNotes={(workspaceId) =>
                     setNotesOverlayFor((prev) => (prev === workspaceId ? null : workspaceId))
@@ -450,7 +468,7 @@ interface WorkspaceTileProps {
   onRenameChange: (value: string) => void
   onRenameCommit: (id: string) => void | Promise<void>
   onRenameCancel: () => void
-  onActivate: () => void
+  onActivateDashboard: (workspaceId: string) => void
   onOpenNotes: (workspaceId: string) => void
   onActivateTodo: (workspaceId: string) => void
   focusedRow: RowKey | null
@@ -475,7 +493,7 @@ function WorkspaceTile({
   onRenameChange,
   onRenameCommit,
   onRenameCancel,
-  onActivate,
+  onActivateDashboard,
   onOpenNotes,
   onActivateTodo,
   focusedRow,
@@ -543,7 +561,7 @@ function WorkspaceTile({
         </button>
         <button
           type="button"
-          onClick={() => !isRenaming && onActivate()}
+          onClick={() => !isRenaming && onActivateDashboard(w.id)}
           onContextMenu={(e) => onContextMenu(e, w)}
           className="flex min-w-0 flex-1 items-start gap-2 text-left"
         >
@@ -635,7 +653,9 @@ function WorkspaceTile({
                   ? () => onOpenNotes(w.id)
                   : subAppNode.subAppId === 'todo'
                     ? () => onActivateTodo(w.id)
-                    : undefined
+                    : subAppNode.subAppId === 'dashboard'
+                      ? () => onActivateDashboard(w.id)
+                      : undefined
               }
               focused={
                 focusedRow === `subapp:${subAppNode.workspaceId}:${subAppNode.subAppId}`
@@ -682,6 +702,7 @@ const SUB_APP_LABEL: Record<SubAppId, string> = {
   supatty: 'SupaTTY',
   notes: 'Notes',
   todo: 'TODO',
+  dashboard: 'Dashboard',
 }
 
 function SubAppRow({
@@ -766,6 +787,8 @@ function SubAppRow({
               <Terminal size={12} aria-hidden="true" />
             ) : subAppId === 'todo' ? (
               <ListTodo size={12} aria-hidden="true" />
+            ) : subAppId === 'dashboard' ? (
+              <LayoutDashboard size={12} aria-hidden="true" />
             ) : (
               <StickyNote size={12} aria-hidden="true" />
             )}
