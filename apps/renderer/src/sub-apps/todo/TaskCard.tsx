@@ -1,25 +1,47 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { CalendarClock, ChevronRight } from 'lucide-react'
-import type { CSSProperties, ReactElement } from 'react'
-import type { Task } from '@shared/todo'
+import { CalendarClock, ChevronRight, Pencil, Trash2 } from 'lucide-react'
+import { useState, type CSSProperties, type MouseEvent, type ReactElement } from 'react'
+import type { Task, TaskSeverity } from '@shared/todo'
+import { ContextMenu, type ContextMenuItem } from '../../components/ContextMenu'
 import { KindPill } from './KindPill'
+import { useTodoStore } from './store'
 
 export interface TaskCardProps {
   task: Task
   onOpen: (task: Task) => void
 }
 
-const SEVERITY_LABEL: Record<NonNullable<Task['severity']>, string> = {
+type CardAction = 'sev-low' | 'sev-medium' | 'sev-high' | 'edit' | 'delete'
+
+const SEVERITY_LABEL: Record<TaskSeverity, string> = {
   low: 'Low',
   medium: 'Med',
   high: 'High',
 }
 
-const SEVERITY_COLOR_VAR: Record<NonNullable<Task['severity']>, string> = {
+const SEVERITY_COLOR_VAR: Record<TaskSeverity, string> = {
   low: 'var(--color-severity-low)',
   medium: 'var(--color-severity-medium)',
   high: 'var(--color-severity-high)',
+}
+
+const SEVERITY_ACTION: Record<TaskSeverity, CardAction> = {
+  low: 'sev-low',
+  medium: 'sev-medium',
+  high: 'sev-high',
+}
+
+const SEVERITY_ORDER: TaskSeverity[] = ['low', 'medium', 'high']
+
+function severityDot(severity: TaskSeverity): ReactElement {
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-block h-2 w-2 rounded-full"
+      style={{ backgroundColor: SEVERITY_COLOR_VAR[severity] }}
+    />
+  )
 }
 
 export function TaskCard({ task, onOpen }: TaskCardProps): ReactElement {
@@ -27,6 +49,8 @@ export function TaskCard({ task, onOpen }: TaskCardProps): ReactElement {
     id: task.id,
     data: { type: 'task', columnId: task.columnId },
   })
+
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
 
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -38,6 +62,50 @@ export function TaskCard({ task, onOpen }: TaskCardProps): ReactElement {
   const overdue =
     task.deadline !== null && task.deadline < Date.now() && task.dateDone === null
 
+  const openMenu = (event: MouseEvent): void => {
+    event.preventDefault()
+    setMenu({ x: event.clientX, y: event.clientY })
+  }
+
+  const handleAction = (action: CardAction): void => {
+    setMenu(null)
+    if (action === 'edit') {
+      onOpen(task)
+      return
+    }
+    const workspaceId = findWorkspaceId(task.id)
+    if (!workspaceId) return
+    const store = useTodoStore.getState()
+    if (action === 'delete') {
+      void store.deleteTask(workspaceId, task)
+      return
+    }
+    const severity = severityOfAction(action)
+    if (severity && severity !== task.severity) {
+      void store.updateTask(workspaceId, { ...task, severity })
+    }
+  }
+
+  const items: ContextMenuItem<CardAction>[] = [
+    ...SEVERITY_ORDER.map<ContextMenuItem<CardAction>>((sev) => ({
+      action: SEVERITY_ACTION[sev],
+      label: SEVERITY_LABEL[sev],
+      icon: severityDot(sev),
+      disabled: task.severity === sev,
+    })),
+    {
+      action: 'edit',
+      label: 'Edit',
+      icon: <Pencil size={12} aria-hidden="true" />,
+    },
+    {
+      action: 'delete',
+      label: 'Delete',
+      icon: <Trash2 size={12} aria-hidden="true" />,
+      danger: true,
+    },
+  ]
+
   return (
     <li
       ref={setNodeRef}
@@ -47,6 +115,7 @@ export function TaskCard({ task, onOpen }: TaskCardProps): ReactElement {
         'hover:border-border-strong focus-within:border-accent',
         isDragging ? 'z-10 shadow-lg' : '',
       ].join(' ')}
+      onContextMenu={openMenu}
       {...attributes}
       {...listeners}
     >
@@ -93,8 +162,34 @@ export function TaskCard({ task, onOpen }: TaskCardProps): ReactElement {
           </div>
         )}
       </button>
+
+      {menu && (
+        <ContextMenu<CardAction>
+          x={menu.x}
+          y={menu.y}
+          items={items}
+          onAction={handleAction}
+          onClose={() => setMenu(null)}
+          ariaLabel={`Task actions: ${task.title}`}
+        />
+      )}
     </li>
   )
+}
+
+function severityOfAction(action: CardAction): TaskSeverity | null {
+  if (action === 'sev-low') return 'low'
+  if (action === 'sev-medium') return 'medium'
+  if (action === 'sev-high') return 'high'
+  return null
+}
+
+function findWorkspaceId(taskId: string): string | null {
+  const { byWorkspace } = useTodoStore.getState()
+  for (const [workspaceId, state] of Object.entries(byWorkspace)) {
+    if (state.tasks.some((t) => t.id === taskId)) return workspaceId
+  }
+  return null
 }
 
 function formatDeadline(ts: number): { relative: string; absolute: string } {
