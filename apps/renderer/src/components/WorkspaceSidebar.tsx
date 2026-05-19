@@ -39,6 +39,7 @@ import { useInlineRename } from '../hooks/useInlineRename'
 import { useSidebarKeyboard } from '../hooks/useSidebarKeyboard'
 import { withViewTransition } from '../lib/viewTransition'
 import { clampMenuPosition, VIEWPORT_MARGIN } from '../lib/menuPosition'
+import { NotesOverlay } from './NotesOverlay'
 import { WorkspaceSettingsMenu } from './WorkspaceSettingsMenu'
 import { StatusIcon } from './StatusIcon'
 import { TerminalTypeIcon } from './TerminalTypeIcon'
@@ -150,6 +151,7 @@ export function WorkspaceSidebar(): ReactElement {
 
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   const [settingsOpenFor, setSettingsOpenFor] = useState<string | null>(null)
+  const [notesOverlayFor, setNotesOverlayFor] = useState<string | null>(null)
   const setColor = useWorkspaceStore((s) => s.setColor)
 
   // Accordion expanded state — active workspace starts expanded along with
@@ -379,6 +381,7 @@ export function WorkspaceSidebar(): ReactElement {
                   onActivate={() => {
                     jumpToWorkspace(w.id)
                   }}
+                  onOpenNotes={setNotesOverlayFor}
                   onContextMenu={handleContextMenu}
                   settingsOpen={settingsOpenFor === w.id}
                   onSettingsToggle={() =>
@@ -406,6 +409,12 @@ export function WorkspaceSidebar(): ReactElement {
           ]}
         />
       )}
+      {notesOverlayFor && (
+        <NotesOverlay
+          workspaceId={notesOverlayFor}
+          onClose={() => setNotesOverlayFor(null)}
+        />
+      )}
     </aside>
   )
 }
@@ -423,6 +432,7 @@ interface WorkspaceTileProps {
   onRenameCommit: (id: string) => void | Promise<void>
   onRenameCancel: () => void
   onActivate: () => void
+  onOpenNotes: (workspaceId: string) => void
   onContextMenu: (e: React.MouseEvent, w: Workspace) => void
   settingsOpen: boolean
   onSettingsToggle: () => void
@@ -444,6 +454,7 @@ function WorkspaceTile({
   onRenameCommit,
   onRenameCancel,
   onActivate,
+  onOpenNotes,
   onContextMenu,
   settingsOpen,
   onSettingsToggle,
@@ -595,7 +606,7 @@ function WorkspaceTile({
               hasChildren={subAppNode.children.length > 0}
               onToggleExpand={() => onToggleSubApp(subAppNode.subAppId)}
               onActivate={
-                subAppNode.subAppId === 'notes' ? () => jumpToWorkspace(w.id) : undefined
+                subAppNode.subAppId === 'notes' ? () => onOpenNotes(w.id) : undefined
               }
             >
               {subAppNode.subAppId === 'supatty' && subAppNode.expanded && (
