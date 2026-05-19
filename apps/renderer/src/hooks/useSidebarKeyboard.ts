@@ -63,7 +63,7 @@ function isEditableTarget(el: EventTarget | null): boolean {
 
 /** Stable key for any tree node. Pure. */
 export function rowKeyOf(node: WorkspaceTreeNode): RowKey {
-  if (node.kind === 'workspace') return `workspace:${node.id}`
+  if (node.kind === 'workspace') return `workspace:${node.workspaceId}`
   if (node.kind === 'sub-app') return `subapp:${node.workspaceId}:${node.subAppId}`
   return `tab:${node.sessionId}`
 }
@@ -304,7 +304,7 @@ export function useSidebarKeyboard(tree: readonly WorkspaceTreeNode[]): UseSideb
           event.preventDefault()
           const target = findNodeByKey(treeRef.current, nodeKey) ?? node
           if (target.kind === 'workspace') {
-            jumpToWorkspace(target.id)
+            jumpToWorkspace(target.workspaceId)
           } else if (target.kind === 'tab') {
             void jumpToSession(target.sessionId)
           } else {
