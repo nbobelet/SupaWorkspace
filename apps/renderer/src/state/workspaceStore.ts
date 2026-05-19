@@ -1,9 +1,12 @@
 import { create } from 'zustand'
+import type { SubAppId } from '@shared/sub-app'
 import type { Workspace } from '@shared/workspace'
 
 interface WorkspaceStoreState {
   workspaces: Workspace[]
   activeWorkspaceId: string | null
+  activeSubAppId: Record<string, SubAppId>
+  expandedSubApps: Record<string, Record<SubAppId, boolean>>
 
   setWorkspaces: (workspaces: Workspace[]) => void
   upsertWorkspace: (workspace: Workspace) => void
@@ -12,11 +15,20 @@ interface WorkspaceStoreState {
   setActiveWorkspace: (id: string | null) => void
   setColor: (id: string, hue: number) => Promise<void>
   getActiveWorkspace: () => Workspace | null
+  setActiveSubApp: (workspaceId: string, subAppId: SubAppId) => void
+  toggleSubAppExpanded: (workspaceId: string, subAppId: SubAppId) => void
+}
+
+const SUBAPP_EXPANDED_DEFAULT: Record<SubAppId, boolean> = {
+  supatty: true,
+  notes: false,
 }
 
 export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
   workspaces: [],
   activeWorkspaceId: null,
+  activeSubAppId: {},
+  expandedSubApps: {},
 
   setWorkspaces: (workspaces) =>
     set((prev) => ({
@@ -72,4 +84,38 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
     const { workspaces, activeWorkspaceId } = get()
     return workspaces.find((w) => w.id === activeWorkspaceId) ?? null
   },
+
+  setActiveSubApp: (workspaceId, subAppId) =>
+    set((prev) => ({
+      activeSubAppId: { ...prev.activeSubAppId, [workspaceId]: subAppId },
+    })),
+
+  toggleSubAppExpanded: (workspaceId, subAppId) =>
+    set((prev) => {
+      const current = prev.expandedSubApps[workspaceId] ?? SUBAPP_EXPANDED_DEFAULT
+      const nextForWorkspace: Record<SubAppId, boolean> = {
+        ...current,
+        [subAppId]: !current[subAppId],
+      }
+      return {
+        expandedSubApps: { ...prev.expandedSubApps, [workspaceId]: nextForWorkspace },
+      }
+    }),
 }))
+
+/**
+ * Active sub-app for a workspace. Defaults to `'supatty'` when no preference
+ * has been recorded yet (lazy default — never written to state).
+ */
+export const useActiveSubApp = (workspaceId: string): SubAppId =>
+  useWorkspaceStore((s) => s.activeSubAppId[workspaceId] ?? 'supatty')
+
+/**
+ * Whether a given sub-app row is expanded in the sidebar for a workspace.
+ * Defaults: supatty expanded, notes collapsed. Resolved lazily so the
+ * initial render matches the toggle semantics without seeding state.
+ */
+export const useIsSubAppExpanded = (workspaceId: string, subAppId: SubAppId): boolean =>
+  useWorkspaceStore(
+    (s) => s.expandedSubApps[workspaceId]?.[subAppId] ?? SUBAPP_EXPANDED_DEFAULT[subAppId],
+  )
