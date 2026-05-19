@@ -1,7 +1,7 @@
 import { useSessionStore, type RendererSession } from '../state/sessionStore'
 import { useWorkspaceStore } from '../state/workspaceStore'
 import { useNotificationStore } from '../state/notificationStore'
-import { focusSession } from '../hooks/useTerminalSession'
+import { focusSession, resyncSession } from '../hooks/useTerminalSession'
 import { withViewTransition } from './viewTransition'
 
 function isEditableNonXtermFocused(): boolean {
@@ -103,21 +103,27 @@ export function addSessionWithFocus(
 }
 
 /**
- * Focus the xterm of `sessionId` on the next animation frame. Used by
- * `TerminalPane` when it mounts (or becomes active) so the user can type
- * immediately after a tab/workspace switch — no extra click needed.
+ * Snap the active session's xterm viewport to the bottom (resync) and, when
+ * safe, hand DOM focus to it. Called by `TerminalPane` when it mounts or
+ * becomes active.
  *
- * Owned by the pane itself so the focus call happens AFTER React has
- * committed the new tree and `useTerminalSession` has re-attached
- * `handle.element` to the DOM. Previous orchestration relied on a single
- * rAF in App.tsx / activateSession that could fire before the new pane's
- * `useEffect` ran, leaving `term.focus()` to target a detached textarea.
+ * Two responsibilities, deliberately decoupled:
+ *  - `resyncSession` fires UNCONDITIONALLY on every activate. It only
+ *    scrolls the buffer; no DOM focus side-effect. Without this, an
+ *    editable element elsewhere (rename input, search field) used to
+ *    suppress the scroll too, leaving the scrollbar at the top of the
+ *    scrollback while the cursor was at the buffer's bottom.
+ *  - `focusSession` (DOM focus steal) stays guarded by
+ *    `isEditableNonXtermFocused` so typing in a rename input / dialog /
+ *    settings field is never hijacked by a re-render of the active pane.
+ *    The guard is also re-checked inside the rAF: an input focused AFTER
+ *    activation but BEFORE the frame fires still wins.
  *
- * Skips when an editable element outside xterm currently has focus, so
- * typing in a rename input / bug-report dialog / settings field is never
- * stolen by a re-render of the active pane.
+ * The rAF is required so `term.focus()` lands after React has committed
+ * the new tree and `useTerminalSession` has re-attached `handle.element`.
  */
 export function focusActiveSession(sessionId: string): void {
+  resyncSession(sessionId)
   if (isEditableNonXtermFocused()) return
   requestAnimationFrame(() => {
     if (isEditableNonXtermFocused()) return
