@@ -36,7 +36,8 @@ import {
 } from '../state/sessionStore'
 import { getSessionStatus } from '../state/sessionStatus'
 import { useInlineRename } from '../hooks/useInlineRename'
-import { useSidebarKeyboard } from '../hooks/useSidebarKeyboard'
+import { useSidebarKeyboard, type RowKey, type TreeKeyHandlers } from '../hooks/useSidebarKeyboard'
+import { useActiveSubApp } from '../state/workspaceStore'
 import { withViewTransition } from '../lib/viewTransition'
 import { clampMenuPosition, VIEWPORT_MARGIN } from '../lib/menuPosition'
 import { NotesOverlay } from './NotesOverlay'
@@ -316,11 +317,12 @@ export function WorkspaceSidebar(): ReactElement {
     [workspaces, sessions, order, expandedIds, activeSessionId],
   )
 
-  // Register global keyboard chords ($mod+Tab → next tab within sub-app;
-  // $mod+Shift+Tab → next sub-app within workspace). Tree-focused nav
-  // (ArrowUp/Down/Enter/Home/End on rows) returned by the hook is not yet
-  // wired into the row elements — that's a follow-up tightening pass.
-  useSidebarKeyboard(tree)
+  // Global chords ($mod+Tab cycle tab within sub-app, $mod+Shift+Tab cycle
+  // sub-app within workspace) PLUS tree-focused nav (Arrow + Enter MVP)
+  // wired via getTreeKeyHandlers spread on SubAppRow / TabLeaf below.
+  // Home/End/ArrowLeft/ArrowRight scopes are returned by the hook but the
+  // MVP only spreads on the leaf-bearing rows.
+  const { focusedRow, getTreeKeyHandlers } = useSidebarKeyboard(tree)
 
   return (
     <aside className="flex w-60 flex-col border-r border-border bg-bg-sunken">
@@ -382,6 +384,8 @@ export function WorkspaceSidebar(): ReactElement {
                     jumpToWorkspace(w.id)
                   }}
                   onOpenNotes={setNotesOverlayFor}
+                  focusedRow={focusedRow}
+                  getTreeKeyHandlers={getTreeKeyHandlers}
                   onContextMenu={handleContextMenu}
                   settingsOpen={settingsOpenFor === w.id}
                   onSettingsToggle={() =>
@@ -433,6 +437,8 @@ interface WorkspaceTileProps {
   onRenameCancel: () => void
   onActivate: () => void
   onOpenNotes: (workspaceId: string) => void
+  focusedRow: RowKey | null
+  getTreeKeyHandlers: (node: WorkspaceTreeNode) => TreeKeyHandlers
   onContextMenu: (e: React.MouseEvent, w: Workspace) => void
   settingsOpen: boolean
   onSettingsToggle: () => void
@@ -455,6 +461,8 @@ function WorkspaceTile({
   onRenameCancel,
   onActivate,
   onOpenNotes,
+  focusedRow,
+  getTreeKeyHandlers,
   onContextMenu,
   settingsOpen,
   onSettingsToggle,
@@ -608,6 +616,10 @@ function WorkspaceTile({
               onActivate={
                 subAppNode.subAppId === 'notes' ? () => onOpenNotes(w.id) : undefined
               }
+              focused={
+                focusedRow === `subapp:${subAppNode.workspaceId}:${subAppNode.subAppId}`
+              }
+              keyHandlers={getTreeKeyHandlers(subAppNode)}
             >
               {subAppNode.subAppId === 'supatty' && subAppNode.expanded && (
                 subAppNode.children.length === 0 ? (
@@ -615,7 +627,12 @@ function WorkspaceTile({
                 ) : (
                   <ul>
                     {subAppNode.children.map((tabNode) => (
-                      <TabLeaf key={tabNode.sessionId} node={tabNode} />
+                      <TabLeaf
+                        key={tabNode.sessionId}
+                        node={tabNode}
+                        focused={focusedRow === `tab:${tabNode.sessionId}`}
+                        keyHandlers={getTreeKeyHandlers(tabNode)}
+                      />
                     ))}
                   </ul>
                 )
@@ -635,6 +652,8 @@ interface SubAppRowProps {
   hasChildren: boolean
   onToggleExpand: () => void
   onActivate?: () => void
+  focused: boolean
+  keyHandlers: TreeKeyHandlers
   children?: React.ReactNode
 }
 
@@ -650,21 +669,43 @@ function SubAppRow({
   hasChildren,
   onToggleExpand,
   onActivate,
+  focused,
+  keyHandlers,
   children,
 }: SubAppRowProps): ReactElement {
   const label = SUB_APP_LABEL[subAppId]
-  // The active-session signal flows down through the rendered tab children;
-  // for the sub-app row itself we visually highlight when expanded so the
-  // user keeps a structural anchor while scanning the tree.
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
+  const activeSubAppId = useActiveSubApp(workspaceId)
+  // Two orthogonal signals: (1) "expanded with children" = structural anchor;
+  // (2) "active sub-app of active workspace" = strongest visual (border-l
+  // bar via absolute span to avoid layout shift on the 240px sidebar).
+  const isActiveSubApp = workspaceId === activeWorkspaceId && subAppId === activeSubAppId
   const isSelfActive = isExpanded && hasChildren
+  const rowBgClass = isActiveSubApp
+    ? 'bg-bg-elevated text-fg'
+    : isSelfActive
+      ? 'bg-bg-elevated/60 text-fg'
+      : 'text-fg-subtle hover:bg-bg-elevated/40'
+
+  const btnRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (focused) btnRef.current?.focus()
+  }, [focused])
+
   return (
     <li className="group/subapp" data-workspace-id={workspaceId} data-sub-app-id={subAppId}>
       <div
         className={[
-          'flex w-full items-center gap-1.5 pl-6 pr-2 py-1 text-left text-xs font-medium',
-          isSelfActive ? 'bg-bg-elevated/60 text-fg' : 'text-fg-subtle hover:bg-bg-elevated/40',
+          'relative flex w-full items-center gap-1.5 pl-6 pr-2 py-1 text-left text-xs font-medium',
+          rowBgClass,
         ].join(' ')}
       >
+        {isActiveSubApp && (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute left-0 top-0 h-full w-[2px] bg-accent"
+          />
+        )}
         {hasChildren ? (
           <button
             type="button"
@@ -688,12 +729,15 @@ function SubAppRow({
           <span className="inline-block w-[11px] shrink-0" aria-hidden="true" />
         )}
         <button
+          ref={btnRef}
           type="button"
           onClick={() => {
             if (onActivate) onActivate()
             else if (hasChildren) onToggleExpand()
           }}
-          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+          onKeyDown={keyHandlers.onKeyDown}
+          tabIndex={focused ? 0 : -1}
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
         >
           <span className="shrink-0 text-muted">
             {subAppId === 'supatty' ? (
@@ -712,14 +756,20 @@ function SubAppRow({
 
 interface TabLeafProps {
   node: Extract<WorkspaceTreeNode, { kind: 'tab' }>
+  focused: boolean
+  keyHandlers: TreeKeyHandlers
 }
 
-function TabLeaf({ node }: TabLeafProps): ReactElement | null {
+function TabLeaf({ node, focused, keyHandlers }: TabLeafProps): ReactElement | null {
   // Tree nodes only carry the discriminator-required fields; richer per-tab
   // state (label, badge, unseen dots, exitCode) lives on the session record
   // in the Zustand store. Looking it up here keeps the tree shape stable
   // and avoids inventing fields outside the Wave 1 schema.
   const session = useSessionStore((s) => s.sessions[node.sessionId])
+  const btnRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (focused) btnRef.current?.focus()
+  }, [focused])
   if (!session) return null
   const status = getSessionStatus(session.state, session.exitCode)
   const isActiveSession = node.active
@@ -734,9 +784,12 @@ function TabLeaf({ node }: TabLeafProps): ReactElement | null {
         ].join(' ')}
       >
         <button
+          ref={btnRef}
           type="button"
-          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
           onClick={() => void jumpToSession(session.id)}
+          onKeyDown={keyHandlers.onKeyDown}
+          tabIndex={focused ? 0 : -1}
         >
           <span className="shrink-0 text-muted">
             <TerminalTypeIcon type={session.type} size={11} />
