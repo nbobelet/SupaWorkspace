@@ -51,7 +51,7 @@ If you're on an unsupported architecture and the prebuild fetch fails, fall back
 
 ```bash
 pnpm dev            # start electron-vite dev (HMR for renderer)
-pnpm typecheck      # tsc -b --noEmit across the monorepo
+pnpm typecheck      # tsc -p tsconfig.json
 pnpm lint           # ESLint flat config
 pnpm format         # Prettier write
 pnpm test           # Vitest unit tests
@@ -72,6 +72,7 @@ pnpm test:e2e       # Playwright smoke test
 | `$mod + Shift + ]` / `[` | Next / previous workspace          |
 | `$mod + R`              | Rename active tab                   |
 | `F2`                    | Rename active workspace             |
+| `$mod + \`              | Cycle layout (single / grid / split) |
 
 Full reference: [docs/keyboard-shortcuts.md](docs/keyboard-shortcuts.md).
 
@@ -91,82 +92,22 @@ pnpm package:dir    # unpacked build for local testing
 
 ```
 apps/main/          # Electron main process (Node)
-apps/preload/       # contextBridge surface
+apps/preload/       # contextBridge surface (typed window.ws.*)
 apps/renderer/      # React 19 + Tailwind 4 UI
 packages/shared/    # Zod IPC schemas + types shared by main and renderer
 ```
 
-IPC channels are defined and validated with Zod in `packages/shared/src/ipc.ts`. Both sides import the same schemas — drift is impossible.
+Core invariants:
 
-The renderer is sandboxed: `contextIsolation: true`, `nodeIntegration: false`. The preload exposes a typed `window.ws.*` surface only.
-
-### Renderer — xterm.js addons
-
-The terminal pane loads the full official xterm.js addon stack via the pure factory `apps/renderer/src/terminal/buildAddons.ts`, in this canonical order: WebGL, Ligatures, Web-Fonts, Unicode-Graphemes (v15), Image (SIXEL + iTerm IIP), Progress (OSC 9;4), Clipboard (OSC 52), Search, Serialize, Web-Links, Fit. The WebGL renderer registers an `onContextLoss` handler that disposes the addon — xterm then falls back to its built-in DOM renderer automatically, so terminal output is never lost.
-
-### Renderer — live design tokens → xterm theme
-
-Terminal colors are driven by CSS custom properties on `:root` (Tailwind 4 `@theme` block in `apps/renderer/src/styles/index.css`) — there are no hardcoded hex values in the terminal code path. `useDesignTokens()` in `apps/renderer/src/hooks/useDesignTokens.ts` reads the snapshot and re-emits via `MutationObserver` whenever `documentElement` attributes change, so flipping any `--color-*` or `--ansi-*` variable instantly re-themes every live terminal — no session remount. The pure mapping lives in `apps/renderer/src/terminal/buildTheme.ts`.
-
-Semantic tokens (`--color-bg`, `--color-bg-sunken`, `--color-bg-elevated`, `--color-fg`, `--color-fg-subtle`, `--color-muted`, `--color-accent`, `--color-running`, `--color-warn`, `--color-error`, `--color-border`, `--color-border-strong`) feed the surface and cursor colors. ANSI palette tokens (`--ansi-black`, `--ansi-red`, `--ansi-green`, `--ansi-yellow`, `--ansi-blue`, `--ansi-magenta`, `--ansi-cyan`, `--ansi-white`, and their `--ansi-bright-*` counterparts) feed the 16-color escape-sequence palette. `red` / `yellow` / `green` are wired to the semantic `error` / `warn` / `running` tokens so terminal exit-code and status output stay consistent with the rest of the UI.
-
-xterm constructor options are validated at module load with `TerminalOptionsZ` (`packages/shared/src/terminal/options.ts`) — a malformed config surfaces as a sonner toast and aborts module init. `prefers-reduced-motion: reduce` is honored live: `smoothScrollDuration` collapses to 0 and `cursorBlink` is disabled, reacting to OS-level toggles via a `MediaQueryList` listener.
-
-## PTY backend
-
-We use `@homebridge/node-pty-prebuilt-multiarch` instead of upstream `node-pty` because it ships prebuilt N-API binaries for the common platforms. Electron loads the N-API binary directly — no ABI rebuild required when Electron's Node version changes.
-
-Verify with:
-
-```bash
-pnpm dev
-# look for "[pty] hello world ok" in the main process logs
-```
-
-### Known noise on Windows
-
-On Electron + ConPTY, `node-pty` spawns an auxiliary `conpty_console_list_agent.js` child process to enumerate console-attached PIDs for cleanup. In an Electron main process detached from a console, this agent's `AttachConsole` call fails and the child crashes. **This is cosmetic** — the actual PTY operations are unaffected. We do not log nor surface this to the user.
-
-## Permissions model
-
-A workspace's `rootPath` is the scope boundary. The renderer can request
-out-of-scope access via:
-
-```ts
-const res = await window.ws.permissions.requestPath({
-  workspaceId,
-  path: '/some/absolute/path',
-  kind: 'read' | 'write',
-})
-```
-
-Resolution:
-
-- If `path` resolves inside `workspace.rootPath` → auto-allow, no dialog.
-- If a matching grant already exists in `workspace.permissions.extraPaths` → auto-allow.
-- Otherwise → native `dialog.showMessageBox` shows the literal path with three buttons (Deny / Allow once / Always allow). "Always allow" persists a `PathGrant` on the workspace.
-
-Grants are revocable from Settings → Permissions. Persistence lives in `electron-store` alongside the workspace itself, so grants survive app restarts.
-
-The `claude` CLI's own per-tool permissions (`Bash(pnpm:*)`, `Read(./**)`, etc.) live in `<rootPath>/.claude/settings.json` and are edited through Settings → Permissions. Those are enforced by the `claude` CLI itself at tool-call time — the host app only writes the file.
+- **Zod at the IPC boundary** — every channel is defined and validated by a Zod schema in `packages/shared/src/ipc.ts`, imported on both sides. Detail: [docs/architecture/ipc.md](docs/architecture/ipc.md).
+- **Sandboxed renderer** — `contextIsolation: true`, `nodeIntegration: false`. The preload exposes a typed `window.ws.*` surface only.
+- **Live design tokens drive xterm** — CSS custom properties on `:root` (Tailwind 4 `@theme`) re-theme every live terminal on change, no session remount. Detail: [docs/architecture/pty.md](docs/architecture/pty.md).
+- **PTY = `@homebridge/node-pty-prebuilt-multiarch`** — prebuilt N-API binaries, no ABI rebuild on Electron upgrades. Detail: [docs/architecture/pty.md](docs/architecture/pty.md).
+- **Workspace.rootPath = scope boundary** — out-of-scope access goes through the `PathGrant` flow. Detail: [docs/how-to/grant-out-of-scope-path.md](docs/how-to/grant-out-of-scope-path.md).
 
 ## Documentation
 
-The `docs/` tree is organised by [Diátaxis](https://diataxis.fr) quadrant:
-
-| Quadrant     | Page                                                                              |
-| ------------ | --------------------------------------------------------------------------------- |
-| Tutorial     | [docs/getting-started.md](docs/getting-started.md) — 10-min walkthrough for first launch |
-| How-to       | [docs/how-to-manage-workspaces.md](docs/how-to-manage-workspaces.md) — create / rename / recolor / delete |
-| How-to       | [docs/how-to/configure-claude-settings.md](docs/how-to/configure-claude-settings.md) — per-workspace `.claude/settings.json` |
-| How-to       | [docs/how-to/grant-out-of-scope-path.md](docs/how-to/grant-out-of-scope-path.md) — `PathGrant` lifecycle |
-| Reference    | [docs/keyboard-shortcuts.md](docs/keyboard-shortcuts.md) — full key table         |
-| Explanation  | [docs/concepts.md](docs/concepts.md) — `Workspace`, `Session`, `Type` definitions |
-| Explanation  | [docs/architecture/ipc.md](docs/architecture/ipc.md) — Zod-at-the-boundary IPC pattern |
-| Explanation  | [docs/architecture/notifications.md](docs/architecture/notifications.md) — dual-channel fan-out |
-| Explanation  | [docs/architecture/pty.md](docs/architecture/pty.md) — PTY backend trade-offs     |
-
-New users should start with [docs/getting-started.md](docs/getting-started.md).
+Canonical entry point: [docs/index.md](docs/index.md) — Diátaxis-organised, lists every page by quadrant. New users start with [docs/getting-started.md](docs/getting-started.md). Contributors read [docs/CONVENTIONS.md](docs/CONVENTIONS.md).
 
 ## Code signing
 

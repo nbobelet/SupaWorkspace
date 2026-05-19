@@ -1,9 +1,27 @@
 # Changelog
 
 All notable changes to this project are documented here.
-Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + [Conventional Commits](https://www.conventionalcommits.org/).
+
+Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Commits and entries follow [Conventional Commits](https://www.conventionalcommits.org/) (Angular). See [docs/CONVENTIONS.md](docs/CONVENTIONS.md#commits--conventional-commits-angular) for the full prefix list, scope rules, and the opt-in Husky hook.
 
 ## [Unreleased]
+
+### Docs
+
+- docs: project doc bootstrap — `docs/AUDIT-2026-05-19.md` (audit snapshot), `docs/index.md` (Diátaxis MOC, canonical entry point), `docs/CONVENTIONS.md` (naming, frontmatter, commits, link discipline), `docs/HEALTH.md` (auto-generated freshness telemetry, 60-day observation window before formal policy).
+- docs: restructure — `git mv docs/how-to-manage-workspaces.md docs/how-to/manage-workspaces.md` (naming convention now consistent across how-to pages), README architecture sections slimmed to one-liners that link into `docs/architecture/*.md`, shortcut table now lists `$mod + \` (cycle layout).
+- docs: project `CLAUDE.md` rewritten with stable sections (commands, architecture, conventions, known-limitations). Preserves the 2026-05-19 worktree-base-bug note verbatim.
+- chore: archive `bug-reports/` → `archive/bug-reports/` (`git mv`, history preserved); `archive/README.md` documents the archival convention.
+
+### Added
+
+- build(scripts): `scripts/docs-health.ts` + `pnpm docs:health` script. Reports `apps/*` vs `docs/*` commit ratio over the last 7 days, broken-link count, and per-page freshness (frontmatter `updated:` vs git last-commit date). Pure git + filesystem, no external services.
+- build(deps): `tsx` dev-dep for running TS scripts under `pnpm`.
+- chore: `@commitlint/cli` + `@commitlint/config-conventional` dev-deps; `commitlint.config.js` at repo root. Conventional-Commits enforcement is **opt-in** — `pnpm commitlint` available, Husky hook described in `docs/CONVENTIONS.md` but not auto-installed.
+
+### Fixed
+
+- docs(readme): `pnpm typecheck` description corrected from `tsc -b --noEmit across the monorepo` to `tsc -p tsconfig.json` (matches actual `package.json#scripts.typecheck`).
 
 ## [0.2.0] - 2026-05-12
 

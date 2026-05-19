@@ -18,6 +18,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "pnpm build && playwright test",
+    "docs:health": "tsx scripts/docs-health.ts",
+    "commitlint": "commitlint --edit",
     "package": "electron-vite build && electron-builder",
     "package:dir": "electron-vite build && electron-builder --dir"
   },
@@ -28,6 +30,8 @@
     }
   },
   "devDependencies": {
+    "@commitlint/cli": "^19.6.1",
+    "@commitlint/config-conventional": "^19.6.0",
     "@eslint/js": "^9.17.0",
     "@playwright/test": "^1.49.1",
     "@tailwindcss/vite": "^4.0.0",
@@ -46,6 +50,7 @@
     "jsdom": "^29.1.1",
     "prettier": "^3.4.2",
     "tailwindcss": "^4.0.0",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.19.1",
     "vite": "^6.0.7",

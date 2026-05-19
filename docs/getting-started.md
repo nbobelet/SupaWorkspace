@@ -7,7 +7,7 @@ updated: 2026-05-12
 
 This is the 10-minute walkthrough for someone who just installed SupaTerminal and wants to feel the app for the first time. By the end you will have opened a workspace, spawned a Claude session, watched it run a tool, and seen the notification system fire.
 
-This page is a **tutorial** in the Diátaxis sense — follow the steps in order, do not skip. Reference material lives in [keyboard-shortcuts.md](./keyboard-shortcuts.md); conceptual background lives in [concepts.md](./concepts.md); task-oriented recipes live in [how-to-manage-workspaces.md](./how-to-manage-workspaces.md).
+This page is a **tutorial** in the Diátaxis sense — follow the steps in order, do not skip. Reference material lives in [keyboard-shortcuts.md](./keyboard-shortcuts.md); conceptual background lives in [concepts.md](./concepts.md); task-oriented recipes live in [how-to/manage-workspaces.md](./how-to/manage-workspaces.md).
 
 ## What you need
 
@@ -117,7 +117,7 @@ The tab strip is now empty — your `shell` and `claude` tabs from `scratch` are
 
 You have now exercised every core concept: workspaces, sessions, types, scope, permissions, notifications, layouts. From here:
 
-- **Recipes for everyday tasks** — [how-to-manage-workspaces.md](./how-to-manage-workspaces.md) covers renaming, recoloring, deleting, conflict handling.
+- **Recipes for everyday tasks** — [how-to/manage-workspaces.md](./how-to/manage-workspaces.md) covers renaming, recoloring, deleting, conflict handling.
 - **Full keyboard reference** — [keyboard-shortcuts.md](./keyboard-shortcuts.md).
 - **What each word means in the codebase** — [concepts.md](./concepts.md).
 - **Why the IPC layer looks the way it does** — [architecture/ipc.md](./architecture/ipc.md).
