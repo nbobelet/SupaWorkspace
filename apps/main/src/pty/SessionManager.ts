@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { spawn as ptySpawn, type IPty } from '@homebridge/node-pty-prebuilt-multiarch'
 import type { SessionConfig, SessionState, SessionType } from '@shared/session'
 import { StateDetector } from './stateDetector'
+import { createTraceWriter, type TraceWriter } from './traceWriter'
 
 export interface SessionManagerEvents {
   onData: (sessionId: string, data: string) => void
@@ -21,6 +22,7 @@ export interface ResolvedSession {
 interface ActiveSession {
   pty: IPty
   config: SessionConfig
+  trace: TraceWriter | null
 }
 
 export class SessionManager {
@@ -61,10 +63,12 @@ export class SessionManager {
       createdAt: Date.now(),
     }
 
-    this.sessions.set(sessionId, { pty, config })
+    const trace = createTraceWriter(sessionId, opts.type)
+    this.sessions.set(sessionId, { pty, config, trace })
     this.stateDetector.register(sessionId, opts.type)
 
     pty.onData((data) => {
+      trace?.write(data)
       this.stateDetector.onData(sessionId, data)
       this.events.onData(sessionId, data)
     })
@@ -72,6 +76,7 @@ export class SessionManager {
     pty.onExit(({ exitCode, signal }) => {
       this.stateDetector.onExit(sessionId, exitCode)
       this.events.onExit(sessionId, exitCode, signal)
+      trace?.close()
       this.stateDetector.unregister(sessionId)
       this.sessions.delete(sessionId)
       this.events.onSessionsChanged?.(this.list())

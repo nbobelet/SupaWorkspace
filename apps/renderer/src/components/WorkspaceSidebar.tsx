@@ -7,6 +7,8 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   FolderPlus,
+  StickyNote,
+  Terminal,
   X,
 } from 'lucide-react'
 import {
@@ -26,23 +28,101 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useWorkspaceStore } from '../state/workspaceStore'
-import { useSessionStore, useWorkspaceWorstStatus, scopeOrder } from '../state/sessionStore'
+import {
+  useSessionStore,
+  useWorkspaceWorstStatus,
+  scopeOrder,
+  type RendererSession,
+} from '../state/sessionStore'
 import { getSessionStatus } from '../state/sessionStatus'
 import { useInlineRename } from '../hooks/useInlineRename'
+import { useSidebarKeyboard, type RowKey, type TreeKeyHandlers } from '../hooks/useSidebarKeyboard'
+import { useActiveSubApp } from '../state/workspaceStore'
 import { withViewTransition } from '../lib/viewTransition'
 import { clampMenuPosition, VIEWPORT_MARGIN } from '../lib/menuPosition'
+import { NotesOverlay } from './NotesOverlay'
 import { WorkspaceSettingsMenu } from './WorkspaceSettingsMenu'
 import { StatusIcon } from './StatusIcon'
 import { TerminalTypeIcon } from './TerminalTypeIcon'
 import { jumpToSession, jumpToWorkspace } from '../lib/sessionFocus'
 import { closeSession } from '../lib/closeSession'
 import { computeToggleAll } from '../lib/workspaceAccordion'
-import type { Workspace } from '@shared/workspace'
+import type { Workspace, WorkspaceTreeNode } from '@shared/workspace'
+import type { SubAppId } from '@shared/sub-app'
 
 interface ContextMenuState {
   workspace: Workspace
   x: number
   y: number
+}
+
+/**
+ * Stable composite key for a sub-app's expanded state inside `expandedIds`.
+ * Workspace expansion uses the bare workspace id; sub-app rows use this
+ * `workspaceId:subAppId` form so the two namespaces never collide.
+ */
+function subAppKey(workspaceId: string, subAppId: SubAppId): string {
+  return `${workspaceId}:${subAppId}`
+}
+
+/**
+ * Pure tree builder — projects (`workspaces`, `sessions`, ...) onto the
+ * `WorkspaceTreeNode` discriminated union landed in Wave 1. No store reads,
+ * no side effects; every input is a parameter so the result is trivially
+ * memoizable and unit-testable from a follow-up wave.
+ *
+ * The `supatty` sub-app receives the workspace's scoped session list as
+ * `tab` leaves; the `notes` sub-app is currently leaf-like with no children.
+ * The tab node's `status` field carries the raw `SessionState` per the
+ * Wave 1 schema — `getSessionStatus` is applied at render time in `TabLeaf`
+ * where the matching `exitCode` is also available from the session lookup.
+ */
+function buildWorkspaceTree(
+  workspaces: readonly Workspace[],
+  sessions: Readonly<Record<string, RendererSession>>,
+  order: readonly string[],
+  expandedIds: ReadonlySet<string>,
+  activeSessionId: string | null,
+): WorkspaceTreeNode[] {
+  return workspaces.map<WorkspaceTreeNode>((w) => {
+    const scopedIds = scopeOrder([...order], sessions, w.id)
+    const supattyChildren: WorkspaceTreeNode[] = []
+    for (const sid of scopedIds) {
+      const session = sessions[sid]
+      if (!session) continue
+      supattyChildren.push({
+        kind: 'tab',
+        workspaceId: w.id,
+        subAppId: 'supatty',
+        sessionId: session.id,
+        active: session.id === activeSessionId,
+        status: session.state,
+      })
+    }
+    return {
+      kind: 'workspace',
+      workspaceId: w.id,
+      expanded: expandedIds.has(w.id),
+      children: [
+        {
+          kind: 'sub-app',
+          workspaceId: w.id,
+          subAppId: 'supatty',
+          expanded: expandedIds.has(subAppKey(w.id, 'supatty')),
+          children: supattyChildren.filter(
+            (node): node is Extract<WorkspaceTreeNode, { kind: 'tab' }> => node.kind === 'tab',
+          ),
+        },
+        {
+          kind: 'sub-app',
+          workspaceId: w.id,
+          subAppId: 'notes',
+          expanded: expandedIds.has(subAppKey(w.id, 'notes')),
+          children: [],
+        },
+      ],
+    }
+  })
 }
 
 export function WorkspaceSidebar(): ReactElement {
@@ -72,24 +152,48 @@ export function WorkspaceSidebar(): ReactElement {
 
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   const [settingsOpenFor, setSettingsOpenFor] = useState<string | null>(null)
+  const [notesOverlayFor, setNotesOverlayFor] = useState<string | null>(null)
   const setColor = useWorkspaceStore((s) => s.setColor)
 
-  // Accordion expanded state — active workspace starts expanded; switching
-  // workspaces no longer mutates the accordion (user-controlled only) so a
-  // freshly-activated workspace keeps whatever expand state it had. The
-  // "Expand all / Collapse all" header button is the single bulk control.
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(
-    () => new Set(activeWorkspaceId ? [activeWorkspaceId] : []),
-  )
+  // Accordion expanded state — active workspace starts expanded along with
+  // its `supatty` sub-app (the always-populated leaf-bearing sub-app). The
+  // set now mixes two key namespaces: bare `workspaceId` for the workspace
+  // tile and `workspaceId:subAppId` (via `subAppKey`) for sub-app rows. The
+  // header "Expand all / Collapse all" button still operates on workspace
+  // ids only — bulk-toggling sub-apps is out of scope.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => {
+    const initial = new Set<string>()
+    if (activeWorkspaceId) {
+      initial.add(activeWorkspaceId)
+      initial.add(subAppKey(activeWorkspaceId, 'supatty'))
+    }
+    return initial
+  })
 
-  const toggleExpand = useCallback((id: string) => {
-    setExpandedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }, [])
+  const toggleSubAppExpandedStore = useWorkspaceStore((s) => s.toggleSubAppExpanded)
+  const toggleExpand = useCallback(
+    (id: string) => {
+      // Sub-app keys (`wsId:subAppId`) propagate to the store — single source
+      // of truth for sub-app expand state since Wave A. Workspace ids (no
+      // colon) stay in the local Set, which still owns workspace-level expand.
+      const colon = id.indexOf(':')
+      if (colon !== -1) {
+        const wsId = id.slice(0, colon)
+        const saId = id.slice(colon + 1)
+        if (saId === 'supatty' || saId === 'notes') {
+          toggleSubAppExpandedStore(wsId, saId)
+        }
+        return
+      }
+      setExpandedIds((prev) => {
+        const next = new Set(prev)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return next
+      })
+    },
+    [toggleSubAppExpandedStore],
+  )
 
   const workspaceIds = useMemo(() => workspaces.map((w) => w.id), [workspaces])
   const toggleAllResult = useMemo(
@@ -97,8 +201,17 @@ export function WorkspaceSidebar(): ReactElement {
     [workspaceIds, expandedIds],
   )
   const toggleAll = useCallback(() => {
-    setExpandedIds(computeToggleAll(workspaceIds, expandedIds).next)
-  }, [workspaceIds, expandedIds])
+    setExpandedIds((prev) => {
+      const { next } = computeToggleAll(workspaceIds, prev)
+      // Preserve sub-app keys — `computeToggleAll` only knows about workspace
+      // ids, so we merge the sub-app entries back in to avoid silently
+      // collapsing every sub-app whenever the user clicks "Collapse all".
+      for (const key of prev) {
+        if (key.includes(':')) next.add(key)
+      }
+      return next
+    })
+  }, [workspaceIds])
 
   const rename = useInlineRename(async (id, newName) => {
     const updated = await window.ws.workspace.rename(id, newName)
@@ -169,6 +282,48 @@ export function WorkspaceSidebar(): ReactElement {
     setMenu(null)
   }, [])
 
+  // The tree itself is currently consumed only by `WorkspaceTile` via the
+  // `workspaceNode` prop below. Building it at the top of the component (and
+  // memoizing it on every dependency that feeds into it) keeps the shape
+  // typed end-to-end — the renderer narrows on `kind` rather than mixing
+  // store types and ad-hoc inline shapes.
+  const sessions = useSessionStore((s) => s.sessions)
+  const order = useSessionStore((s) => s.order)
+  const activeSessionId = useSessionStore((s) => s.activeId)
+
+  // Sub-app expand lives in the store since Wave A. Mirror it into the local
+  // Set so the existing tree builder keeps reading from a single Set without
+  // breaking signature. One-way: store → local. UI mouse-click toggles still
+  // flow through the local Set (toggleExpand) AND dispatch to the store for
+  // colon keys (see below).
+  const expandedSubApps = useWorkspaceStore((s) => s.expandedSubApps)
+  useEffect(() => {
+    setExpandedIds((prev) => {
+      const next = new Set<string>()
+      for (const key of prev) {
+        if (!key.includes(':')) next.add(key)
+      }
+      for (const [wsId, subapps] of Object.entries(expandedSubApps)) {
+        for (const [saId, expanded] of Object.entries(subapps)) {
+          if (expanded) next.add(`${wsId}:${saId}`)
+        }
+      }
+      return next
+    })
+  }, [expandedSubApps])
+
+  const tree = useMemo(
+    () => buildWorkspaceTree(workspaces, sessions, order, expandedIds, activeSessionId),
+    [workspaces, sessions, order, expandedIds, activeSessionId],
+  )
+
+  // Global chords ($mod+Tab cycle tab within sub-app, $mod+Shift+Tab cycle
+  // sub-app within workspace) PLUS tree-focused nav (Arrow + Enter MVP)
+  // wired via getTreeKeyHandlers spread on SubAppRow / TabLeaf below.
+  // Home/End/ArrowLeft/ArrowRight scopes are returned by the hook but the
+  // MVP only spreads on the leaf-bearing rows.
+  const { focusedRow, getTreeKeyHandlers } = useSidebarKeyboard(tree)
+
   return (
     <aside className="flex w-60 flex-col border-r border-border bg-bg-sunken">
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
@@ -208,31 +363,40 @@ export function WorkspaceSidebar(): ReactElement {
             {workspaces.length === 0 && (
               <li className="px-3 py-2 text-xs text-muted">No workspaces yet. Click &ldquo;Open&rdquo;.</li>
             )}
-            {workspaces.map((w) => (
-              <WorkspaceTile
-                key={w.id}
-                workspace={w}
-                isActive={w.id === activeWorkspaceId}
-                isExpanded={expandedIds.has(w.id)}
-                onToggleExpand={() => toggleExpand(w.id)}
-                isRenaming={rename.isRenaming(w.id)}
-                renameValue={rename.renameValue}
-                onRenameChange={rename.setRenameValue}
-                onRenameCommit={rename.commitRename}
-                onRenameCancel={rename.cancelRename}
-                onActivate={() => {
-                  jumpToWorkspace(w.id)
-                }}
-                onContextMenu={handleContextMenu}
-                settingsOpen={settingsOpenFor === w.id}
-                onSettingsToggle={() =>
-                  setSettingsOpenFor((prev) => (prev === w.id ? null : w.id))
-                }
-                onStartRename={() => rename.startRename(w.id, w.name)}
-                onChangeColor={(hue) => void setColor(w.id, hue)}
-                onDelete={() => void remove(w.id)}
-              />
-            ))}
+            {workspaces.map((w, idx) => {
+              const node = tree[idx]
+              if (!node || node.kind !== 'workspace') return null
+              return (
+                <WorkspaceTile
+                  key={w.id}
+                  workspace={w}
+                  workspaceNode={node}
+                  isActive={w.id === activeWorkspaceId}
+                  isExpanded={expandedIds.has(w.id)}
+                  onToggleExpand={() => toggleExpand(w.id)}
+                  onToggleSubApp={(subAppId) => toggleExpand(subAppKey(w.id, subAppId))}
+                  isRenaming={rename.isRenaming(w.id)}
+                  renameValue={rename.renameValue}
+                  onRenameChange={rename.setRenameValue}
+                  onRenameCommit={rename.commitRename}
+                  onRenameCancel={rename.cancelRename}
+                  onActivate={() => {
+                    jumpToWorkspace(w.id)
+                  }}
+                  onOpenNotes={setNotesOverlayFor}
+                  focusedRow={focusedRow}
+                  getTreeKeyHandlers={getTreeKeyHandlers}
+                  onContextMenu={handleContextMenu}
+                  settingsOpen={settingsOpenFor === w.id}
+                  onSettingsToggle={() =>
+                    setSettingsOpenFor((prev) => (prev === w.id ? null : w.id))
+                  }
+                  onStartRename={() => rename.startRename(w.id, w.name)}
+                  onChangeColor={(hue) => void setColor(w.id, hue)}
+                  onDelete={() => void remove(w.id)}
+                />
+              )
+            })}
           </ul>
         </SortableContext>
       </DndContext>
@@ -249,21 +413,32 @@ export function WorkspaceSidebar(): ReactElement {
           ]}
         />
       )}
+      {notesOverlayFor && (
+        <NotesOverlay
+          workspaceId={notesOverlayFor}
+          onClose={() => setNotesOverlayFor(null)}
+        />
+      )}
     </aside>
   )
 }
 
 interface WorkspaceTileProps {
   workspace: Workspace
+  workspaceNode: Extract<WorkspaceTreeNode, { kind: 'workspace' }>
   isActive: boolean
   isExpanded: boolean
   onToggleExpand: () => void
+  onToggleSubApp: (subAppId: SubAppId) => void
   isRenaming: boolean
   renameValue: string
   onRenameChange: (value: string) => void
   onRenameCommit: (id: string) => void | Promise<void>
   onRenameCancel: () => void
   onActivate: () => void
+  onOpenNotes: (workspaceId: string) => void
+  focusedRow: RowKey | null
+  getTreeKeyHandlers: (node: WorkspaceTreeNode) => TreeKeyHandlers
   onContextMenu: (e: React.MouseEvent, w: Workspace) => void
   settingsOpen: boolean
   onSettingsToggle: () => void
@@ -274,15 +449,20 @@ interface WorkspaceTileProps {
 
 function WorkspaceTile({
   workspace: w,
+  workspaceNode,
   isActive,
   isExpanded,
   onToggleExpand,
+  onToggleSubApp,
   isRenaming,
   renameValue,
   onRenameChange,
   onRenameCommit,
   onRenameCancel,
   onActivate,
+  onOpenNotes,
+  focusedRow,
+  getTreeKeyHandlers,
   onContextMenu,
   settingsOpen,
   onSettingsToggle,
@@ -291,10 +471,6 @@ function WorkspaceTile({
   onDelete,
 }: WorkspaceTileProps): ReactElement {
   const worstStatus = useWorkspaceWorstStatus(w.id)
-  const sessions = useSessionStore((s) => s.sessions)
-  const order = useSessionStore((s) => s.order)
-  const activeSessionId = useSessionStore((s) => s.activeId)
-  const sessionIds = scopeOrder(order, sessions, w.id)
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: w.id,
@@ -310,6 +486,12 @@ function WorkspaceTile({
   const pillStyle = w.color
     ? { background: `oklch(70% 0.15 ${w.color.hue}deg)` }
     : undefined
+
+  // Narrow the children once so every JSX site below stays type-safe without
+  // re-asserting the discriminant.
+  const subAppNodes = workspaceNode.children.filter(
+    (node): node is Extract<WorkspaceTreeNode, { kind: 'sub-app' }> => node.kind === 'sub-app',
+  )
 
   return (
     <li
@@ -414,7 +596,7 @@ function WorkspaceTile({
         />
       )}
 
-      {/* Session accordion */}
+      {/* Sub-app accordion: each workspace exposes two sub-apps (supatty + notes). */}
       <div
         className={[
           'overflow-hidden transition-[max-height] duration-200 ease-in-out',
@@ -422,80 +604,231 @@ function WorkspaceTile({
         ].join(' ')}
         aria-hidden={!isExpanded}
       >
-        {sessionIds.length === 0 ? (
-          <p className="px-8 py-1 text-[11px] text-muted">No sessions</p>
-        ) : (
-          <ul className="pb-1">
-            {sessionIds.map((sid) => {
-              const session = sessions[sid]
-              if (!session) return null
-              const status = getSessionStatus(session.state, session.exitCode)
-              const isActiveSession = sid === activeSessionId
-              return (
-                <li
-                  key={sid}
-                  className="group/session"
-                >
-                  <div
-                    className={[
-                      'flex w-full items-center gap-1.5 pl-8 pr-2 py-1 text-left text-xs',
-                      isActiveSession
-                        ? 'bg-bg-elevated/80 text-fg'
-                        : 'text-fg-subtle hover:bg-bg-elevated/40',
-                    ].join(' ')}
-                  >
-                    <button
-                      type="button"
-                      className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-                      onClick={() => void jumpToSession(sid)}
-                    >
-                      <span className="shrink-0 text-muted">
-                        <TerminalTypeIcon type={session.type} size={11} />
-                      </span>
-                      <span
-                        className="min-w-0 flex-1 truncate"
-                        title={session.label}
-                      >
-                        {session.label}
-                      </span>
-                      {session.hasUnseenAsking && (
-                        <span
-                          className="shrink-0 h-1.5 w-1.5 rounded-full bg-warn"
-                          aria-label="Waiting for input"
-                        />
-                      )}
-                      {session.hasUnseenEnding && (
-                        <span
-                          className="shrink-0 h-1.5 w-1.5 rounded-full bg-error"
-                          aria-label="Session ended"
-                        />
-                      )}
-                      {session.badgeCount > 0 && (
-                        <span className="rounded-full bg-accent px-1 text-[10px] font-mono leading-tight text-white">
-                          {session.badgeCount > 9 ? '9+' : session.badgeCount}
-                        </span>
-                      )}
-                      <span className="shrink-0">
-                        <StatusIcon status={status} size={11} />
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        closeSession(sid)
-                      }}
-                      aria-label={`Close session ${session.label}`}
-                      className="shrink-0 rounded-sm p-0.5 text-muted opacity-0 hover:text-fg group-hover/session:opacity-100 focus-visible:opacity-100"
-                    >
-                      <X size={10} aria-hidden="true" />
-                    </button>
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
+        <ul className="pb-1">
+          {subAppNodes.map((subAppNode) => (
+            <SubAppRow
+              key={`${subAppNode.workspaceId}:${subAppNode.subAppId}`}
+              workspaceId={subAppNode.workspaceId}
+              subAppId={subAppNode.subAppId}
+              isExpanded={subAppNode.expanded}
+              hasChildren={subAppNode.children.length > 0}
+              onToggleExpand={() => onToggleSubApp(subAppNode.subAppId)}
+              onActivate={
+                subAppNode.subAppId === 'notes' ? () => onOpenNotes(w.id) : undefined
+              }
+              focused={
+                focusedRow === `subapp:${subAppNode.workspaceId}:${subAppNode.subAppId}`
+              }
+              keyHandlers={getTreeKeyHandlers(subAppNode)}
+            >
+              {subAppNode.subAppId === 'supatty' && subAppNode.expanded && (
+                subAppNode.children.length === 0 ? (
+                  <p className="pl-10 pr-2 py-1 text-[11px] text-muted">No sessions</p>
+                ) : (
+                  <ul>
+                    {subAppNode.children.map((tabNode) => (
+                      <TabLeaf
+                        key={tabNode.sessionId}
+                        node={tabNode}
+                        focused={focusedRow === `tab:${tabNode.sessionId}`}
+                        keyHandlers={getTreeKeyHandlers(tabNode)}
+                      />
+                    ))}
+                  </ul>
+                )
+              )}
+            </SubAppRow>
+          ))}
+        </ul>
+      </div>
+    </li>
+  )
+}
+
+interface SubAppRowProps {
+  workspaceId: string
+  subAppId: SubAppId
+  isExpanded: boolean
+  hasChildren: boolean
+  onToggleExpand: () => void
+  onActivate?: () => void
+  focused: boolean
+  keyHandlers: TreeKeyHandlers
+  children?: React.ReactNode
+}
+
+const SUB_APP_LABEL: Record<SubAppId, string> = {
+  supatty: 'SupaTTY',
+  notes: 'Notes',
+}
+
+function SubAppRow({
+  workspaceId,
+  subAppId,
+  isExpanded,
+  hasChildren,
+  onToggleExpand,
+  onActivate,
+  focused,
+  keyHandlers,
+  children,
+}: SubAppRowProps): ReactElement {
+  const label = SUB_APP_LABEL[subAppId]
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
+  const activeSubAppId = useActiveSubApp(workspaceId)
+  // Two orthogonal signals: (1) "expanded with children" = structural anchor;
+  // (2) "active sub-app of active workspace" = strongest visual (border-l
+  // bar via absolute span to avoid layout shift on the 240px sidebar).
+  const isActiveSubApp = workspaceId === activeWorkspaceId && subAppId === activeSubAppId
+  const isSelfActive = isExpanded && hasChildren
+  const rowBgClass = isActiveSubApp
+    ? 'bg-bg-elevated text-fg'
+    : isSelfActive
+      ? 'bg-bg-elevated/60 text-fg'
+      : 'text-fg-subtle hover:bg-bg-elevated/40'
+
+  const btnRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (focused) btnRef.current?.focus()
+  }, [focused])
+
+  return (
+    <li className="group/subapp" data-workspace-id={workspaceId} data-sub-app-id={subAppId}>
+      <div
+        className={[
+          'relative flex w-full items-center gap-1.5 pl-6 pr-2 py-1 text-left text-xs font-medium',
+          rowBgClass,
+        ].join(' ')}
+      >
+        {isActiveSubApp && (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute left-0 top-0 h-full w-[2px] bg-accent"
+          />
         )}
+        {hasChildren ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleExpand()
+            }}
+            aria-label={isExpanded ? `Collapse ${label}` : `Expand ${label}`}
+            aria-expanded={isExpanded}
+            className="shrink-0 text-muted hover:text-fg"
+          >
+            {isExpanded ? (
+              <ChevronDown size={11} aria-hidden="true" />
+            ) : (
+              <ChevronRight size={11} aria-hidden="true" />
+            )}
+          </button>
+        ) : (
+          // Spacer keeps icon + label alignment identical between sub-apps
+          // that have children (chevron-bearing) and leaf-like ones (notes).
+          <span className="inline-block w-[11px] shrink-0" aria-hidden="true" />
+        )}
+        <button
+          ref={btnRef}
+          type="button"
+          onClick={() => {
+            if (onActivate) onActivate()
+            else if (hasChildren) onToggleExpand()
+          }}
+          onKeyDown={keyHandlers.onKeyDown}
+          tabIndex={focused ? 0 : -1}
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
+        >
+          <span className="shrink-0 text-muted">
+            {subAppId === 'supatty' ? (
+              <Terminal size={12} aria-hidden="true" />
+            ) : (
+              <StickyNote size={12} aria-hidden="true" />
+            )}
+          </span>
+          <span className="min-w-0 flex-1 truncate">{label}</span>
+        </button>
+      </div>
+      {children}
+    </li>
+  )
+}
+
+interface TabLeafProps {
+  node: Extract<WorkspaceTreeNode, { kind: 'tab' }>
+  focused: boolean
+  keyHandlers: TreeKeyHandlers
+}
+
+function TabLeaf({ node, focused, keyHandlers }: TabLeafProps): ReactElement | null {
+  // Tree nodes only carry the discriminator-required fields; richer per-tab
+  // state (label, badge, unseen dots, exitCode) lives on the session record
+  // in the Zustand store. Looking it up here keeps the tree shape stable
+  // and avoids inventing fields outside the Wave 1 schema.
+  const session = useSessionStore((s) => s.sessions[node.sessionId])
+  const btnRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (focused) btnRef.current?.focus()
+  }, [focused])
+  if (!session) return null
+  const status = getSessionStatus(session.state, session.exitCode)
+  const isActiveSession = node.active
+  return (
+    <li className="group/session">
+      <div
+        className={[
+          'flex w-full items-center gap-1.5 pl-10 pr-2 py-1 text-left text-xs',
+          isActiveSession
+            ? 'bg-bg-elevated/80 text-fg'
+            : 'text-fg-subtle hover:bg-bg-elevated/40',
+        ].join(' ')}
+      >
+        <button
+          ref={btnRef}
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
+          onClick={() => void jumpToSession(session.id)}
+          onKeyDown={keyHandlers.onKeyDown}
+          tabIndex={focused ? 0 : -1}
+        >
+          <span className="shrink-0 text-muted">
+            <TerminalTypeIcon type={session.type} size={11} />
+          </span>
+          <span className="min-w-0 flex-1 truncate" title={session.label}>
+            {session.label}
+          </span>
+          {session.hasUnseenAsking && (
+            <span
+              className="shrink-0 h-1.5 w-1.5 rounded-full bg-warn"
+              aria-label="Waiting for input"
+            />
+          )}
+          {session.hasUnseenEnding && (
+            <span
+              className="shrink-0 h-1.5 w-1.5 rounded-full bg-error"
+              aria-label="Session ended"
+            />
+          )}
+          {session.badgeCount > 0 && (
+            <span className="rounded-full bg-accent px-1 text-[10px] font-mono leading-tight text-white">
+              {session.badgeCount > 9 ? '9+' : session.badgeCount}
+            </span>
+          )}
+          <span className="shrink-0">
+            <StatusIcon status={status} size={11} />
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            closeSession(session.id)
+          }}
+          aria-label={`Close session ${session.label}`}
+          className="shrink-0 rounded-sm p-0.5 text-muted opacity-0 hover:text-fg group-hover/session:opacity-100 focus-visible:opacity-100"
+        >
+          <X size={10} aria-hidden="true" />
+        </button>
       </div>
     </li>
   )

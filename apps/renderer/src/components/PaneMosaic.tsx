@@ -9,6 +9,7 @@ import { activateSession } from '../lib/sessionFocus'
 import { CascadeLayout } from './CascadeLayout'
 import { WelcomePane } from './WelcomePane'
 import { EmptyWorkspaceState } from './EmptyWorkspaceState'
+import { SINGLE_MODE_WRAPPER_CLASS } from './PaneMosaic.layout'
 
 function buildSingleNode(sessionIds: readonly string[], activeId: string | null): MosaicNode<string> | null {
   if (sessionIds.length === 0) return null
@@ -112,7 +113,7 @@ export function PaneMosaic(): ReactElement {
     const id = typeof node === 'string' ? node : null
     if (!id) return <div />
     return (
-      <div className="h-full w-full p-2">
+      <div className={SINGLE_MODE_WRAPPER_CLASS}>
         <TerminalPane sessionId={id} isActive={id === activeId} onFocus={() => {
                 void activateSession(id)
               }} />

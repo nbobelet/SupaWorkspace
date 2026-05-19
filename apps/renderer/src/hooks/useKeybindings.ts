@@ -3,8 +3,7 @@ import { tinykeys, type KeyBindingMap } from 'tinykeys'
 import { returnFocusToActiveSession } from '../lib/commandBarFocus'
 
 export interface KeybindingHandlers {
-  cycleSessionNext: () => void
-  cycleSessionPrev: () => void
+  // $mod+Tab / $mod+Shift+Tab owned by useSidebarKeyboard (sub-app-aware semantics).
   jumpToSession: (index: number) => void
   spawnLastUsed: () => void
   killActive: () => void
@@ -95,8 +94,6 @@ function guardWithFocusRestore(
 export function useKeybindings(handlers: KeybindingHandlers): void {
   useEffect(() => {
     const bindings: KeyBindingMap = {
-      '$mod+Tab': guardWithFocusRestore('cycleSessionNext', handlers.cycleSessionNext),
-      '$mod+Shift+Tab': guardWithFocusRestore('cycleSessionPrev', handlers.cycleSessionPrev),
       '$mod+t': guardWithFocusRestore('spawnLastUsed', handlers.spawnLastUsed),
       '$mod+w': guardWithFocusRestore('killActive', handlers.killActive),
       '$mod+Shift+]': guardWithFocusRestore('cycleWorkspaceNext', handlers.cycleWorkspaceNext),

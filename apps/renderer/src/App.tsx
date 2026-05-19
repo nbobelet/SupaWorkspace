@@ -201,22 +201,6 @@ export function App(): ReactElement {
     [workspaces, activeWorkspaceId, setActiveWorkspace],
   )
 
-  const cycleSession = useCallback(
-    (direction: 1 | -1) => {
-      if (scopedOrder.length === 0) return
-      const idx = activeId ? scopedOrder.indexOf(activeId) : -1
-      const nextIdx =
-        idx === -1
-          ? direction === 1
-            ? 0
-            : scopedOrder.length - 1
-          : (idx + direction + scopedOrder.length) % scopedOrder.length
-      const next = scopedOrder[nextIdx]
-      if (next) void activateSession(next)
-    },
-    [scopedOrder, activeId],
-  )
-
   const reorderActiveTab = useCallback(
     (direction: 1 | -1) => {
       if (!activeWorkspaceId || !activeId) return
@@ -230,8 +214,6 @@ export function App(): ReactElement {
   )
 
   useKeybindings({
-    cycleSessionNext: () => cycleSession(1),
-    cycleSessionPrev: () => cycleSession(-1),
     jumpToSession: (i) => {
       const id = scopedOrder[i]
       if (id) void activateSession(id)

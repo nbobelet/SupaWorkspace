@@ -5,9 +5,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../hooks/useTerminalSession', () => ({
   focusSession: vi.fn(),
+  resyncSession: vi.fn(),
 }))
 
-import { focusSession } from '../hooks/useTerminalSession'
+import { focusSession, resyncSession } from '../hooks/useTerminalSession'
 import { useSessionStore } from '../state/sessionStore'
 import { useWorkspaceStore } from '../state/workspaceStore'
 import {
@@ -32,6 +33,7 @@ const flushFrame = (): Promise<void> => new Promise((resolve) => setTimeout(reso
 describe('activateSession (click-to-focus contract)', () => {
   beforeEach(() => {
     vi.mocked(focusSession).mockClear()
+    vi.mocked(resyncSession).mockClear()
     useSessionStore.setState({
       sessions: {},
       order: [],
@@ -42,7 +44,7 @@ describe('activateSession (click-to-focus contract)', () => {
   })
 
   // Regression: clicking inside the already-active terminal pane must NOT
-  // re-fire focusSession. focusSession -> follow.resync() -> scrollToBottom,
+  // re-fire focusSession OR resyncSession. resyncSession -> scrollToBottom,
   // which destroys an in-flight selection and forces the viewport to the
   // newest output. Only a real session-switch should catch up to the bottom.
   it('skips focusSession when the clicked session is already active', async () => {
@@ -61,6 +63,7 @@ describe('activateSession (click-to-focus contract)', () => {
     await flushFrame()
 
     expect(focusSession).not.toHaveBeenCalled()
+    expect(resyncSession).not.toHaveBeenCalled()
   })
 
   // After the TerminalPane-owned focus refactor, activateSession only marks
@@ -96,6 +99,7 @@ describe('activateSession (click-to-focus contract)', () => {
 describe('focusIfSoleSession', () => {
   beforeEach(() => {
     vi.mocked(focusSession).mockClear()
+    vi.mocked(resyncSession).mockClear()
     useSessionStore.setState({
       sessions: {},
       order: [],
@@ -240,6 +244,7 @@ describe('focusIfSoleSession', () => {
 describe('focusActiveSession (TerminalPane-owned focus on activation)', () => {
   beforeEach(() => {
     vi.mocked(focusSession).mockClear()
+    vi.mocked(resyncSession).mockClear()
     if (typeof document !== 'undefined') {
       document.body.innerHTML = ''
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
@@ -294,11 +299,47 @@ describe('focusActiveSession (TerminalPane-owned focus on activation)', () => {
     await flushFrame()
     expect(focusSession).toHaveBeenCalledWith('s1')
   })
+
+  // Regression for scroll-bottom-on-tab-activate: resync (scroll to bottom)
+  // and focus-steal must be decoupled. An editable input outside xterm
+  // (rename field, search) blocks the term.focus() steal, but the viewport
+  // must still snap to bottom on tab activate — otherwise the scrollbar
+  // sits at the top of the scrollback while the cursor is at the buffer's
+  // bottom, and wheel-scroll jumps to the old position.
+  it('resyncSession fires on tab activate even when an editable input outside xterm has focus', async () => {
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    input.focus()
+    expect(document.activeElement).toBe(input)
+
+    focusActiveSession('s1')
+    await flushFrame()
+
+    expect(resyncSession).toHaveBeenCalledTimes(1)
+    expect(resyncSession).toHaveBeenCalledWith('s1')
+    expect(focusSession).not.toHaveBeenCalled()
+  })
+
+  // Pairs with the test above: focus-steal stays guarded against an
+  // editable element outside xterm. The two responsibilities of
+  // focusActiveSession (resync, focus-steal) are now independent.
+  it('focusActiveSession does NOT call focusSession when an editable input outside xterm has focus', async () => {
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    input.focus()
+    expect(document.activeElement).toBe(input)
+
+    focusActiveSession('s1')
+    await flushFrame()
+
+    expect(focusSession).not.toHaveBeenCalled()
+  })
 })
 
 describe('jumpToSession (cross-workspace click-to-jump)', () => {
   beforeEach(() => {
     vi.mocked(focusSession).mockClear()
+    vi.mocked(resyncSession).mockClear()
     useSessionStore.setState({
       sessions: {},
       order: [],
@@ -352,6 +393,7 @@ describe('jumpToSession (cross-workspace click-to-jump)', () => {
 describe('jumpToWorkspace (tile click-to-jump)', () => {
   beforeEach(() => {
     vi.mocked(focusSession).mockClear()
+    vi.mocked(resyncSession).mockClear()
     useSessionStore.setState({
       sessions: {},
       order: [],

@@ -147,9 +147,12 @@ describe('StateDetector', () => {
   // long enough lull, regardless of regex match.
   describe('fallback idle (no prompt match)', () => {
     it('claude session falls back to idle after 2s of no data', () => {
+      // Claude is input-driven: data alone does not flip to running.
+      // onInput arms both the transition and the fallback timer, so
+      // after 2s of silence the session auto-reverts to idle.
       const { detector } = makeDetector()
       detector.register('s1', 'claude')
-      detector.onData('s1', '\x1b[2J\x1b[1;1Hsome TUI render')
+      detector.onInput('s1')
       expect(detector.getState('s1')).toBe('running')
 
       vi.advanceTimersByTime(500)
@@ -180,13 +183,16 @@ describe('StateDetector', () => {
     })
 
     it('new data resets the fallback timer (no flicker on bursty output)', () => {
+      // Setup running via onInput. Each subsequent data chunk while
+      // already running re-arms the fallback so streaming response
+      // text doesn't prematurely settle to idle.
       const { detector } = makeDetector()
       detector.register('s1', 'claude')
-      detector.onData('s1', 'first chunk')
+      detector.onInput('s1')
       vi.advanceTimersByTime(1500)
       expect(detector.getState('s1')).toBe('running')
 
-      detector.onData('s1', 'second chunk')
+      detector.onData('s1', 'streaming response chunk')
       vi.advanceTimersByTime(1500)
       expect(detector.getState('s1')).toBe('running')
 
@@ -277,9 +283,12 @@ describe('StateDetector', () => {
     // never fired because the state machine never transitioned out of
     // `running` in the first place.
     it('spinner bursts during running do NOT reset the fallback idle timer', () => {
+      // Setup running via onInput (claude is input-driven). ANSI-only
+      // bursts then exercise the noise guard — they must not reset the
+      // fallback so the session settles to idle at 2s.
       const { detector } = makeDetector()
       detector.register('s1', 'claude')
-      detector.onData('s1', 'Real Claude content')
+      detector.onInput('s1')
       expect(detector.getState('s1')).toBe('running')
 
       // Simulate Claude TUI cursor-blink every 250ms during the 2s fallback
@@ -288,15 +297,15 @@ describe('StateDetector', () => {
         vi.advanceTimersByTime(250)
         detector.onData('s1', '\x1b[?25l\x1b[?25h')
       }
-      // 2s elapsed in 250ms increments. Fallback (2000ms after the only
-      // meaningful chunk) should have fired exactly once during the loop.
+      // 2s elapsed in 250ms increments. Fallback (2000ms after onInput)
+      // should have fired exactly once during the loop.
       expect(detector.getState('s1')).toBe('idle')
     })
 
     it('OSC-title repaints during running do NOT reset the fallback idle timer', () => {
       const { detector } = makeDetector()
       detector.register('s1', 'claude')
-      detector.onData('s1', 'Real Claude content')
+      detector.onInput('s1')
 
       // Title repaints arrive every 400ms (mimicking xterm title hooks).
       for (let i = 0; i < 6; i++) {
@@ -415,11 +424,9 @@ describe('StateDetector', () => {
   // timer leaks.
   describe('done state + auto-revert', () => {
     it('markDone transitions idle → done → idle after 1500ms', () => {
+      // claude starts idle on register; markDone is valid from idle.
       const { detector, events } = makeDetector()
       detector.register('s1', 'claude')
-      detector.onData('s1', 'finished a turn')
-      vi.advanceTimersByTime(2000)
-      expect(detector.getState('s1')).toBe('idle')
 
       detector.markDone('s1')
       expect(detector.getState('s1')).toBe('done')
@@ -434,9 +441,6 @@ describe('StateDetector', () => {
     it('cancels pending done auto-revert when new activity arrives', () => {
       const { detector } = makeDetector()
       detector.register('s1', 'claude')
-      detector.onData('s1', 'turn finished')
-      vi.advanceTimersByTime(2000)
-      expect(detector.getState('s1')).toBe('idle')
 
       detector.markDone('s1')
       expect(detector.getState('s1')).toBe('done')
@@ -473,19 +477,134 @@ describe('StateDetector', () => {
     it('unregister clears the done timer (no leak)', () => {
       const { detector, events } = makeDetector()
       detector.register('s1', 'claude')
-      detector.onData('s1', 'work')
-      vi.advanceTimersByTime(2000)
       detector.markDone('s1')
       expect(detector.getState('s1')).toBe('done')
 
       detector.unregister('s1')
       vi.advanceTimersByTime(2000)
 
-      // Track is gone — auto-revert callback no-ops. No phantom events emitted.
+      // Track is gone — auto-revert callback no-ops. Only the initial
+      // register emit produces an `idle` event; the would-be
+      // done-auto-revert must not have fired.
       const afterUnregister = events.filter((e) => e.state === 'idle').length
-      // Only the initial register emit + the post-onData settle should count;
-      // the would-be done-auto-revert must not have fired.
-      expect(afterUnregister).toBe(2)
+      expect(afterUnregister).toBe(1)
+    })
+  })
+
+  // Fixes for two user-reported claude-TUI flap symptoms (2026-05-19):
+  //   "handles statuses poorly — sometimes running while nothing is
+  //   happening, transitions to done then idle randomly".
+  //
+  // Bug 1 — ghost-running pulse: the old data-driven rule flipped claude
+  //   idle -> running on any non-ANSI-empty chunk, so every background
+  //   TUI repaint (model name, token counter, "Thinking..." indicator,
+  //   middle-dot spinner) walked the FSM through running -> 2s fallback
+  //   -> idle without any command actually running. Fix: claude is now
+  //   input-driven (only onInput or asking-cleared can transition into
+  //   running). Data while already running still re-arms the fallback.
+  //
+  // Bug 2 — done-flap: `transition()` clears the done timer on any new
+  //   transition, so a mid-pulse TUI text burst walked the FSM through
+  //   done -> running -> idle inside the 1500ms pulse. Fix: `done` is
+  //   sticky against data events; only onInput, onExit, or an
+  //   asking-pattern override cancel the pulse early.
+  describe('claude TUI: input-driven semantics + done pulse stickiness', () => {
+    it('background TUI text does NOT flip claude idle -> running', () => {
+      const { detector, events } = makeDetector()
+      detector.register('s1', 'claude')
+
+      detector.onData('s1', '·')
+      expect(detector.getState('s1')).toBe('idle')
+
+      detector.onData('s1', 'Thinking... 1.2k tokens')
+      expect(detector.getState('s1')).toBe('idle')
+
+      detector.onData('s1', 'sonnet-4-6')
+      expect(detector.getState('s1')).toBe('idle')
+
+      // Only the initial register emit; no spurious running/idle pulses.
+      expect(events.map((e) => e.state)).toEqual(['idle'])
+    })
+
+    it('claude data while already running re-arms the fallback (streaming response stays running)', () => {
+      const { detector } = makeDetector()
+      detector.register('s1', 'claude')
+      detector.onInput('s1')
+      expect(detector.getState('s1')).toBe('running')
+
+      // Streaming chunks every 1s for 5s — each re-arms the 2s fallback.
+      for (let i = 0; i < 5; i++) {
+        vi.advanceTimersByTime(1000)
+        detector.onData('s1', `chunk ${i}`)
+      }
+      expect(detector.getState('s1')).toBe('running')
+
+      // 2s after the last chunk — fallback fires.
+      vi.advanceTimersByTime(2000)
+      expect(detector.getState('s1')).toBe('idle')
+    })
+
+    it('done state survives claude TUI text repaints for the full DONE_DURATION_MS', () => {
+      const { detector, events } = makeDetector()
+      detector.register('s1', 'claude')
+      detector.markDone('s1')
+      expect(detector.getState('s1')).toBe('done')
+
+      // Mid-pulse TUI bursts (status repaints, token counter, ...).
+      vi.advanceTimersByTime(500)
+      detector.onData('s1', 'Thinking...')
+      expect(detector.getState('s1')).toBe('done')
+
+      vi.advanceTimersByTime(500)
+      detector.onData('s1', 'more background noise')
+      expect(detector.getState('s1')).toBe('done')
+
+      // At DONE_DURATION_MS (1500ms) total, auto-reverts to idle.
+      vi.advanceTimersByTime(500)
+      expect(detector.getState('s1')).toBe('idle')
+
+      // No phantom running event injected by the mid-pulse data bursts.
+      expect(events.map((e) => e.state)).toEqual(['idle', 'done', 'idle'])
+    })
+
+    it('done auto-revert fires at exactly DONE_DURATION_MS when stream is silent', () => {
+      // Sanity baseline: with no interfering data, done -> idle is clean
+      // at the documented 1500ms. Any future timing change here is a real
+      // design decision, not an accidental regression.
+      const { detector } = makeDetector()
+      detector.register('s1', 'claude')
+      detector.markDone('s1')
+      expect(detector.getState('s1')).toBe('done')
+
+      vi.advanceTimersByTime(1499)
+      expect(detector.getState('s1')).toBe('done')
+
+      vi.advanceTimersByTime(1)
+      expect(detector.getState('s1')).toBe('idle')
+    })
+
+    // Replay slot for a runtime-captured trace. Enable by:
+    //   1. set SUPATTY_TRACE_PTY=1 in the env, launch the app, reproduce.
+    //   2. grab the JSON from <userData>/pty-traces/ (e.g. claude-<id>-<stamp>.json).
+    //   3. drop it as apps/main/test/fixtures/pty/claude-flap-repro.json.
+    //   4. flip the `it.skip` below to `it` and assert the expected FSM
+    //      sequence end-state.
+    it.skip('replay captured claude flap trace (drop fixture to enable)', () => {
+      const chunks = loadJsonChunks('claude-flap-repro.json')
+      const { detector, events } = makeDetector()
+      detector.register('s1', 'claude')
+      for (const c of chunks) {
+        if (c.delayMs > 0) vi.advanceTimersByTime(c.delayMs)
+        detector.onData('s1', hexToString(c.hex))
+      }
+      // Default expectation: after replay + a long settle, state should be
+      // idle. Adjust per the captured scenario.
+      vi.advanceTimersByTime(15000)
+      expect(detector.getState('s1')).toBe('idle')
+      // Optional: assert the captured transition sequence does NOT include
+      // a ghost running mid-stream by counting flips.
+      const flips = events.filter((e, i) => i > 0 && e.state !== events[i - 1]?.state).length
+      expect(flips).toBeLessThan(20)
     })
   })
 

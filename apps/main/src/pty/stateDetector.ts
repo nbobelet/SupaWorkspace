@@ -101,19 +101,19 @@ export class StateDetector {
       return
     }
 
-    this.clearTimers(track)
-
     // Authoritative shell-emitted done marker (OSC 133;D). When present,
     // skip the debounce + fallback path entirely. The shell told us
     // explicitly that the command finished — trust it.
     if (isOsc133Done(track.buffer)) {
       if (track.state === 'running') {
+        this.clearTimers(track)
         this.transition(sessionId, 'idle', 'osc133-done')
       }
       return
     }
 
     if (detectUserInputRequired(track.buffer)) {
+      this.clearTimers(track)
       this.transition(sessionId, 'asking', 'regex-asking')
       // Reset the buffer once asking is confirmed. Subsequent chunks then
       // evaluate against a fresh window — a menu redraw (full re-render of
@@ -122,6 +122,40 @@ export class StateDetector {
       // Without this reset, the old menu would stay in the rolling tail
       // and asking would be sticky even after the menu is gone.
       track.buffer = ''
+      return
+    }
+
+    // Sticky-done: while a `done` pulse is active, swallow data events.
+    // Done is a transient visual cue that must survive UI repaints —
+    // especially for claude TUI, where mid-pulse text bursts (background
+    // status, "Thinking...", token counter) used to walk the FSM through
+    // done -> running -> idle inside the 1500ms pulse, producing a visible
+    // flap. The pulse ends naturally via doneTimer or via explicit signals
+    // (onInput, onExit, asking detection above).
+    if (track.state === 'done') return
+
+    this.clearTimers(track)
+
+    // claude is input-driven: data alone does NOT auto-transition
+    // idle -> running. Claude's TUI emits constant background text
+    // (model name, token counter, "thinking" indicator, status
+    // repaints) that the old data-driven rule mistook for active turn
+    // work — producing a ghost-running pulse without any command
+    // actually executing. The authoritative "turn started" signal for
+    // claude is user input (onInput) or the asking-cleared branch
+    // (below, when a menu was dismissed). While ALREADY running, each
+    // chunk still resets the fallback timer so streaming response text
+    // doesn't prematurely settle to idle.
+    if (track.type === 'claude' && track.state !== 'asking') {
+      if (track.state === 'running') {
+        track.fallbackTimer = setTimeout(() => {
+          const cur = this.tracks.get(sessionId)
+          if (!cur) return
+          cur.fallbackTimer = null
+          if (cur.state !== 'running') return
+          this.transition(sessionId, 'idle', 'fallback-timer')
+        }, FALLBACK_IDLE_MS[track.type])
+      }
       return
     }
 
@@ -163,6 +197,21 @@ export class StateDetector {
     this.clearTimers(track)
     this.clearDoneTimer(track)
     this.transition(sessionId, 'running', 'user-input')
+    // Arm the fallback so this running state can auto-settle to idle
+    // even if no PTY data follows (silent input, hung session). Under
+    // the claude input-driven model this is the only path that puts
+    // claude into running, so without arming the fallback here a no-op
+    // input would leave the session stuck on running forever. For shell
+    // sessions, real command output normally resets this via onData
+    // before it fires, so this is a defensive default.
+    if (track.state !== 'running') return
+    track.fallbackTimer = setTimeout(() => {
+      const cur = this.tracks.get(sessionId)
+      if (!cur) return
+      cur.fallbackTimer = null
+      if (cur.state !== 'running') return
+      this.transition(sessionId, 'idle', 'fallback-timer')
+    }, FALLBACK_IDLE_MS[track.type])
   }
 
   onExit(sessionId: string, exitCode: number): void {
