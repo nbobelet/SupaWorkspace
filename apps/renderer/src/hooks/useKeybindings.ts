@@ -3,9 +3,7 @@ import { tinykeys, type KeyBindingMap } from 'tinykeys'
 import { returnFocusToActiveSession } from '../lib/commandBarFocus'
 
 export interface KeybindingHandlers {
-  // $mod+Tab / $mod+Shift+Tab claimed by useSidebarKeyboard (sub-app-aware semantics).
-  cycleSessionNext?: () => void
-  cycleSessionPrev?: () => void
+  // $mod+Tab / $mod+Shift+Tab owned by useSidebarKeyboard (sub-app-aware semantics).
   jumpToSession: (index: number) => void
   spawnLastUsed: () => void
   killActive: () => void
