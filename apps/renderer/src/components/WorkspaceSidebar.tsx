@@ -200,6 +200,18 @@ export function WorkspaceSidebar(): ReactElement {
   const setSubAppExpanded = useWorkspaceStore((s) => s.setSubAppExpanded)
   const lastUsedType = useSessionStore((s) => s.lastUsedType)
 
+  // Accordion-on-activate: expand exactly the clicked workspace and collapse
+  // every other workspace. Sub-app keys (`wsId:subAppId`) are preserved — they
+  // live in a separate namespace owned by the store, not this Set.
+  const expandExclusive = useCallback((id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set<string>()
+      for (const key of prev) if (key.includes(':')) next.add(key)
+      next.add(id)
+      return next
+    })
+  }, [])
+
   // Bring a workspace's terminal sub-app to the foreground: switch the active
   // workspace + sub-app to supatty and reveal its session list. This is the
   // missing return path from Dashboard/TODO — those views own the body, and
@@ -209,8 +221,9 @@ export function WorkspaceSidebar(): ReactElement {
       setActiveWorkspace(workspaceId)
       setActiveSubApp(workspaceId, 'supatty')
       setSubAppExpanded(workspaceId, 'supatty', true)
+      expandExclusive(workspaceId)
     },
-    [setActiveWorkspace, setActiveSubApp, setSubAppExpanded],
+    [setActiveWorkspace, setActiveSubApp, setSubAppExpanded, expandExclusive],
   )
 
   // Quick-action spawn from the sidebar SupaTTY row — works from any view.
@@ -448,6 +461,7 @@ export function WorkspaceSidebar(): ReactElement {
                   onActivateDashboard={(workspaceId) => {
                     setActiveSubApp(workspaceId, 'dashboard')
                     setActiveWorkspace(workspaceId)
+                    expandExclusive(workspaceId)
                   }}
                   onActivateSupatty={activateSupatty}
                   onQuickSpawn={(workspaceId) => void quickSpawn(workspaceId)}
@@ -457,6 +471,7 @@ export function WorkspaceSidebar(): ReactElement {
                   onActivateTodo={(workspaceId) => {
                     setActiveSubApp(workspaceId, 'todo')
                     setActiveWorkspace(workspaceId)
+                    expandExclusive(workspaceId)
                   }}
                   focusedRow={focusedRow}
                   getTreeKeyHandlers={getTreeKeyHandlers}
