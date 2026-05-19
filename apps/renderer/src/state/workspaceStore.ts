@@ -17,12 +17,16 @@ interface WorkspaceStoreState {
   getActiveWorkspace: () => Workspace | null
   setActiveSubApp: (workspaceId: string, subAppId: SubAppId) => void
   toggleSubAppExpanded: (workspaceId: string, subAppId: SubAppId) => void
+  setSubAppExpanded: (workspaceId: string, subAppId: SubAppId, expanded: boolean) => void
 }
 
 const SUBAPP_EXPANDED_DEFAULT: Record<SubAppId, boolean> = {
   supatty: true,
   notes: false,
   todo: false,
+  // Dashboard is a leaf view (no expandable children) — collapsed flag is inert
+  // but the Record must stay exhaustive over SubAppId.
+  dashboard: false,
 }
 
 export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
@@ -98,6 +102,19 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
         ...current,
         [subAppId]: !current[subAppId],
       }
+      return {
+        expandedSubApps: { ...prev.expandedSubApps, [workspaceId]: nextForWorkspace },
+      }
+    }),
+
+  // Idempotent expand setter — used when activating a sub-app should reveal its
+  // children regardless of prior state (e.g. clicking SupaTTY auto-expands the
+  // session list). Avoids the toggle race when the caller knows the target.
+  setSubAppExpanded: (workspaceId, subAppId, expanded) =>
+    set((prev) => {
+      const current = prev.expandedSubApps[workspaceId] ?? SUBAPP_EXPANDED_DEFAULT
+      if (current[subAppId] === expanded) return prev
+      const nextForWorkspace: Record<SubAppId, boolean> = { ...current, [subAppId]: expanded }
       return {
         expandedSubApps: { ...prev.expandedSubApps, [workspaceId]: nextForWorkspace },
       }

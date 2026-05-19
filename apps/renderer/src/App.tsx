@@ -6,6 +6,7 @@ import { WorkspaceSidebar } from './components/WorkspaceSidebar'
 import { SessionTabs } from './components/SessionTabs'
 import { LayoutSwitcher } from './components/LayoutSwitcher'
 import { TodoPane } from './sub-apps/todo'
+import { DashboardPane } from './sub-apps/dashboard'
 import { SettingsPanel } from './components/settings/SettingsPanel'
 import { CommandPalette } from './components/CommandPalette'
 import { CmdGuardModal } from './components/CmdGuardModal'
@@ -34,6 +35,10 @@ export function App(): ReactElement {
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace)
   const activeSubApp = useActiveSubApp(activeWorkspaceId ?? '')
   const isTodoActive = !!activeWorkspaceId && activeSubApp === 'todo'
+  const isDashboardActive = !!activeWorkspaceId && activeSubApp === 'dashboard'
+  // Terminal chrome (tab strip + layout switcher) shows only for the supatty
+  // sub-app. TODO and Dashboard are full-pane views that own the body.
+  const isTerminalView = !isTodoActive && !isDashboardActive
 
   const setActive = useSessionStore((s) => s.setActive)
   const activeId = useSessionStore((s) => s.activeId)
@@ -292,11 +297,13 @@ export function App(): ReactElement {
             <span>Settings</span>
           </button>
           <BugReportButton />
-          {!isTodoActive && <LayoutSwitcher />}
+          {isTerminalView && <LayoutSwitcher />}
         </header>
-        {!isTodoActive && <SessionTabs />}
+        {isTerminalView && <SessionTabs />}
         <div className="flex-1 overflow-hidden">
-          {isTodoActive && activeWorkspaceId ? (
+          {isDashboardActive && activeWorkspaceId ? (
+            <DashboardPane workspaceId={activeWorkspaceId} />
+          ) : isTodoActive && activeWorkspaceId ? (
             <TodoPane workspaceId={activeWorkspaceId} />
           ) : (
             <PaneMosaic />
