@@ -375,6 +375,15 @@ export function focusSession(sessionId: string): void {
   handle.term.focus()
 }
 
+// Scroll-to-bottom on tab activate without stealing DOM focus. Paired with
+// `focusActiveSession` in sessionFocus.ts: resync always fires on activate;
+// focusSession only fires when no editable element outside xterm is focused.
+export function resyncSession(sessionId: string): void {
+  const handle = handles.get(sessionId)
+  if (!handle) return
+  handle.follow.resync()
+}
+
 function readTerminalBuffer(sessionId: string): string | null {
   const handle = handles.get(sessionId)
   if (!handle) return null
