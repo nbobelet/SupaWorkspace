@@ -89,6 +89,16 @@ export function shouldReportResize(
   return prev.cols !== next.cols || prev.rows !== next.rows
 }
 
+// A `false -> true` visibility flip must force a fresh fit even when the
+// container `contentRect` is unchanged. PaneMosaic single mode remounts the
+// active pane into a slot of identical dimensions, so the ResizeObserver
+// never re-fires; without a forced refit the first-paint crop persists. This
+// only governs the local `fit()`/reflow — `shouldReportResize` still gates
+// the `pty.resize` IPC, so an unchanged cols/rows stays silent.
+export function shouldForceRefitOnVisibility(prev: boolean, next: boolean): boolean {
+  return !prev && next
+}
+
 function toFollowTarget(term: Terminal): FollowOutputTarget {
   return {
     buffer: term.buffer,
@@ -451,6 +461,16 @@ export function useTerminalSession(sessionId: string, container: HTMLElement | n
     container.appendChild(handle.element)
 
     let wasVisible = false
+    let disposed = false
+    let pendingRaf: number | null = null
+
+    const cancelPendingRaf = (): void => {
+      if (pendingRaf !== null) {
+        cancelAnimationFrame(pendingRaf)
+        pendingRaf = null
+      }
+      handle.rafScheduled = false
+    }
 
     const fitAndReport = (visibleNow: boolean): void => {
       try {
@@ -480,16 +500,52 @@ export function useTerminalSession(sessionId: string, container: HTMLElement | n
     // dozens of `fit()` calls per second, each reflowing the terminal.
     let pendingVisibleNow = container.clientWidth > 0 && container.clientHeight > 0
     const scheduleFit = (visibleNow: boolean): void => {
+      // why: a false->true visibility flip must force a refit even when the
+      // ResizeObserver stays silent. PaneMosaic single mode remounts the
+      // active pane into a slot of identical dimensions (unchanged
+      // contentRect), so without this bypass the first-paint bottom-row crop
+      // persists until a window resize / view switch. The lastReportedSize
+      // guard inside fitAndReport still suppresses the pty.resize when
+      // cols/rows are unchanged, so the forced refit emits no SIGWINCH.
+      const force = shouldForceRefitOnVisibility(wasVisible, visibleNow)
       pendingVisibleNow = visibleNow
-      if (handle.rafScheduled) return
+      if (handle.rafScheduled && !force) return
+      if (force) cancelPendingRaf()
       handle.rafScheduled = true
-      requestAnimationFrame(() => {
+      pendingRaf = requestAnimationFrame(() => {
+        pendingRaf = null
         handle.rafScheduled = false
+        if (disposed) return
         fitAndReport(pendingVisibleNow)
       })
     }
 
-    scheduleFit(pendingVisibleNow)
+    // The first fit must run after the monospace font + WebGL glyph metrics
+    // settle, otherwise term.rows is derived from fallback cell height and
+    // the bottom row(s) get cropped ("fit avant open = bug"). Gate on
+    // document.fonts.ready when available, then a double rAF so the fit lands
+    // after the first paint when glyph box measurement is stable.
+    const runInitialFit = (): void => {
+      if (disposed) return
+      pendingRaf = requestAnimationFrame(() => {
+        pendingRaf = requestAnimationFrame(() => {
+          pendingRaf = null
+          if (disposed) return
+          fitAndReport(pendingVisibleNow)
+        })
+      })
+    }
+
+    const fontsReady =
+      typeof document !== 'undefined' ? document.fonts?.ready : undefined
+    if (fontsReady) {
+      void fontsReady.then(() => {
+        if (disposed) return
+        runInitialFit()
+      })
+    } else {
+      runInitialFit()
+    }
 
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0]
@@ -500,6 +556,8 @@ export function useTerminalSession(sessionId: string, container: HTMLElement | n
     observer.observe(container)
 
     return () => {
+      disposed = true
+      cancelPendingRaf()
       observer.disconnect()
       if (handle.element.parentNode === container) {
         container.removeChild(handle.element)
