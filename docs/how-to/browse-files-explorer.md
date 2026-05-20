@@ -5,7 +5,7 @@ updated: 2026-05-20
 
 # Browse files with the Explorer
 
-The **Explorer** sub-app is a macOS-Finder-style file browser for the active workspace. It lays out folders in horizontally-scrolling **Miller columns** — click a folder, its contents open in a new column to the right; click a file, its details appear in the rightmost panel. This page walks through opening it, navigating, reading the git decorations, and acting on entries.
+The **Explorer** sub-app is a macOS-Finder-style file browser for the active workspace. It lays out folders in horizontally-scrolling **Miller columns** — open a folder (double-click, `Enter`, or `→`) and its contents appear in a new column to the right; select a file (single-click) and its details appear in the rightmost panel. This page walks through opening it, navigating, reading the git decorations, and acting on entries.
 
 ## Contents
 
@@ -33,9 +33,9 @@ The Explorer always opens at the workspace **root** (the workspace's `rootPath`)
 
 Each column is one directory level. The view is **lazy**: a folder is listed only when you open it, one level at a time.
 
-- Click a **folder** → its contents open in a new column to the right.
-- Click a **file** → its metadata (name, type, size, git status) appears in the rightmost panel; any deeper columns collapse.
-- Re-clicking a folder in a column to the left **truncates** every column to its right and re-branches from there.
+- **Select a folder** (single-click) → it highlights, but its contents do **not** open yet. **Open it** with a double-click, `Enter`, or `→` → its contents appear in a new column to the right.
+- **Select a file** (single-click) → its metadata (name, type, size, git status) appears in the rightmost panel; any deeper columns collapse.
+- Opening a folder in a column to the left **truncates** every column to its right and re-branches from there.
 
 The row of columns scrolls horizontally; each column scrolls vertically.
 
@@ -138,6 +138,7 @@ This is the **v1** Explorer. The following are deliberately out of scope and pla
 Two more behaviors worth knowing:
 
 - **Gitignored entries are hidden.** Files and folders matched by `.gitignore` (e.g. `node_modules`, `dist`) do not appear in the listing at all. That is why the `ignored` (`I`) decoration is rarely seen — ignored entries are filtered out before they reach the column.
+- **The `.git` directory is hidden.** Git's own plumbing folder (or the gitdir-link file used by worktrees and submodules) is never listed.
 - **Very large directories are truncated.** A column lists at most 5000 entries; beyond that the listing stops to keep the UI responsive.
 
 ---

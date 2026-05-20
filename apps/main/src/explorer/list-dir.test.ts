@@ -90,6 +90,18 @@ describe('listDir', () => {
     expect(srcDir?.gitStatus).toBe('untracked')
   })
 
+  it('hides the .git directory from the listing', async () => {
+    initRepo(root)
+    writeFileSync(join(root, 'kept.ts'), 'export const a = 1')
+
+    const result = await listDir(root, '')
+    expect(result.status).toBe('ok')
+    if (result.status !== 'ok') return
+    const names = result.entries.map((e) => e.name)
+    expect(names).toContain('kept.ts')
+    expect(names).not.toContain('.git')
+  })
+
   it('degrades gracefully (no filtering, no status) outside a git repo', async () => {
     writeFileSync(join(root, 'a.txt'), 'hello')
     mkdirSync(join(root, 'dir'))

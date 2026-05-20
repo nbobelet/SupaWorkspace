@@ -80,6 +80,9 @@ export async function listDir(rootPath: string, relPath: string): Promise<ListDi
   let truncated = false
   for (const dirent of dirents) {
     const abs = resolve(dir, dirent.name)
+    // The `.git` directory (or gitdir-link file in worktrees/submodules) is
+    // git plumbing, never user content — hide it like every file browser does.
+    if (dirent.name === '.git') continue
     if (ignored.has(abs)) continue
     if (entries.length >= MAX_ENTRIES) {
       truncated = true
