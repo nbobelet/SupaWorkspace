@@ -6,6 +6,7 @@ import {
   isClaudeBoxAsking,
   isClaudeNumberedSelector,
   isClaudeSelectorMenu,
+  isOsc133CommandStart,
   isOsc133Done,
 } from './detectUserInputRequired'
 
@@ -93,8 +94,7 @@ describe('detectUserInputRequired', () => {
     })
 
     it('returns false for a box frame missing "Do you want"', () => {
-      const noText =
-        '╭─────────╮\n│   ❯ Yes │\n│     No  │\n╰─────────╯\n'
+      const noText = '╭─────────╮\n│   ❯ Yes │\n│     No  │\n╰─────────╯\n'
       expect(isClaudeBoxAsking(noText)).toBe(false)
     })
 
@@ -199,8 +199,7 @@ describe('detectUserInputRequired', () => {
     it('tolerates ANSI color codes around the > cursor', () => {
       // Claude colors the highlighted line; the matcher must strip ANSI
       // before regex-testing so the `>` cursor still anchors at line start.
-      const colored =
-        'Pick one\n\n\x1b[1;36m> 1. Yes\x1b[0m\n  2. No\n'
+      const colored = 'Pick one\n\n\x1b[1;36m> 1. Yes\x1b[0m\n  2. No\n'
       expect(isClaudeNumberedSelector(colored)).toBe(true)
     })
 
@@ -269,6 +268,22 @@ describe('detectUserInputRequired', () => {
 
     it('isOsc133Done returns false for empty buffer', () => {
       expect(isOsc133Done('')).toBe(false)
+    })
+
+    it('isOsc133CommandStart returns true for 133;C with BEL / ST / params / end-of-tail', () => {
+      expect(isOsc133CommandStart('prompt$ ls\x1b]133;C\x07')).toBe(true)
+      expect(isOsc133CommandStart('cmd\x1b]133;C\x1b\\')).toBe(true)
+      expect(isOsc133CommandStart('cmd\x1b]133;C;extra\x07')).toBe(true)
+      expect(isOsc133CommandStart('cmd\x1b]133;C')).toBe(true)
+    })
+
+    it('isOsc133CommandStart returns false for ;A / ;B / ;D and malformed bursts', () => {
+      expect(isOsc133CommandStart('output\x1b]133;A\x07')).toBe(false)
+      expect(isOsc133CommandStart('output\x1b]133;B\x07')).toBe(false)
+      expect(isOsc133CommandStart('output\x1b]133;D\x07')).toBe(false)
+      // `C` followed by a bare letter is not a valid terminator.
+      expect(isOsc133CommandStart('streaming\x1b]133;CDE more text')).toBe(false)
+      expect(isOsc133CommandStart('')).toBe(false)
     })
 
     it('detectUserInputRequired returns false for a buffer that only contains 133;D', () => {
