@@ -41,7 +41,7 @@ export function CmdGuardModal(): ReactElement | null {
         <p id="cmd-guard-desc" className="mt-1 text-xs text-fg-subtle">
           Matched rule: <span className="font-medium text-fg">{pending.rule.description}</span>
         </p>
-        <pre className="mt-3 max-h-48 overflow-auto rounded-sm border border-border bg-bg px-2 py-2 font-mono text-xs text-fg whitespace-pre-wrap break-words">
+        <pre className="supa-scroll mt-3 max-h-48 overflow-auto rounded-sm border border-border bg-bg px-2 py-2 font-mono text-xs text-fg whitespace-pre-wrap break-words">
           {pending.cmd}
         </pre>
         <div className="mt-4 flex items-center justify-end gap-2">

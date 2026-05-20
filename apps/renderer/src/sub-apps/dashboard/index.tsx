@@ -70,7 +70,7 @@ export function DashboardPane({ workspaceId }: DashboardPaneProps): ReactElement
     .join(' + ')
 
   return (
-    <div className="h-full overflow-y-auto bg-bg px-6 py-5 text-fg">
+    <div className="supa-scroll h-full overflow-y-auto bg-bg px-6 py-5 text-fg">
       <header className="mb-5 flex items-center gap-2">
         <LayoutDashboard size={18} className="text-accent" aria-hidden="true" />
         <h1 className="text-sm font-semibold tracking-tight">Workspace dashboard</h1>

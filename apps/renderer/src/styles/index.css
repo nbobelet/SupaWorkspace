@@ -124,3 +124,52 @@ body {
     animation: none !important;
   }
 }
+
+/*
+ * Canonical scroll-container styling. Add `supa-scroll` to ANY scrollable
+ * element (sub-app, panel, list) and it gets the unified thin token-based
+ * scrollbar — the single source of truth replacing the per-component variants
+ * that had drifted (8px white-rgba in xterm, 6px fg/15 inline in SessionTabs).
+ * Token-driven via --color-fg, so it re-themes with the rest of the UI.
+ * `.xterm .xterm-viewport` shares the same rules so the terminal tracks tokens
+ * too (was previously a hardcoded rgba block injected from useTerminalSession).
+ */
+.supa-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-fg) 18%, transparent) transparent;
+}
+
+.supa-scroll::-webkit-scrollbar,
+.xterm .xterm-viewport::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.supa-scroll::-webkit-scrollbar-track,
+.xterm .xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.supa-scroll::-webkit-scrollbar-thumb,
+.xterm .xterm-viewport::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+  border-radius: 999px;
+  transition: background-color 120ms ease;
+}
+
+.supa-scroll:hover::-webkit-scrollbar-thumb,
+.xterm .xterm-viewport:hover::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-fg) 24%, transparent);
+}
+
+.supa-scroll::-webkit-scrollbar-thumb:active,
+.xterm .xterm-viewport::-webkit-scrollbar-thumb:active {
+  background: color-mix(in srgb, var(--color-fg) 32%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .supa-scroll::-webkit-scrollbar-thumb,
+  .xterm .xterm-viewport::-webkit-scrollbar-thumb {
+    transition: none;
+  }
+}

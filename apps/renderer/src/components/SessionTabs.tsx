@@ -223,7 +223,7 @@ export function SessionTabs(): ReactElement {
         <SortableContext items={scopedOrder} strategy={horizontalListSortingStrategy}>
           <div
             ref={stripRef}
-            className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto scroll-smooth [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-fg/15 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-fg/30 [&::-webkit-scrollbar-thumb]:transition-colors motion-reduce:[&::-webkit-scrollbar-thumb]:transition-none"
+            className="supa-scroll flex min-w-0 flex-1 items-center gap-1 overflow-x-auto scroll-smooth"
           >
             {scopedOrder.map((id) => {
               const s = sessions[id]

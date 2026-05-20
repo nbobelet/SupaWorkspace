@@ -73,7 +73,7 @@ export function CommandPalette(): ReactElement | null {
             placeholder="Jump to workspace, session, or action…"
             className="border-b border-border bg-transparent px-3 py-2.5 text-sm text-fg outline-none placeholder:text-muted"
           />
-          <Command.List className="max-h-80 overflow-y-auto py-1">
+          <Command.List className="supa-scroll max-h-80 overflow-y-auto py-1">
             <Command.Empty className="px-3 py-4 text-center text-xs text-muted">
               No results.
             </Command.Empty>

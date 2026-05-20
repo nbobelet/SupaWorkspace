@@ -58,31 +58,6 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches
 }
 
-const SCROLLBAR_STYLE_ID = 'supa-xterm-scrollbar'
-const SCROLLBAR_CSS = `
-.xterm .xterm-viewport::-webkit-scrollbar { width: 8px; height: 8px; }
-.xterm .xterm-viewport::-webkit-scrollbar-track { background: transparent; }
-.xterm .xterm-viewport::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 999px;
-  transition: background-color 120ms ease;
-}
-.xterm .xterm-viewport:hover::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); }
-.xterm .xterm-viewport::-webkit-scrollbar-thumb:active { background: rgba(255, 255, 255, 0.28); }
-@media (prefers-reduced-motion: reduce) {
-  .xterm .xterm-viewport::-webkit-scrollbar-thumb { transition: none; }
-}
-`
-
-function ensureScrollbarStyles(): void {
-  if (typeof document === 'undefined') return
-  if (document.getElementById(SCROLLBAR_STYLE_ID)) return
-  const style = document.createElement('style')
-  style.id = SCROLLBAR_STYLE_ID
-  style.textContent = SCROLLBAR_CSS
-  document.head.appendChild(style)
-}
-
 interface TerminalHandle {
   term: Terminal
   fit: FitAddon
@@ -131,8 +106,6 @@ let listenersInitialized = false
 function ensureGlobalListeners(): void {
   if (listenersInitialized) return
   listenersInitialized = true
-
-  ensureScrollbarStyles()
 
   globalDataUnsub = window.ws.session.onData(({ sessionId, data }) => {
     const handle = handles.get(sessionId)

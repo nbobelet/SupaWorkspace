@@ -117,7 +117,7 @@ export function KanbanBoard({
       onDragCancel={() => setActiveId(null)}
     >
       <div
-        className="flex h-full gap-3 overflow-x-auto p-3"
+        className="supa-scroll flex h-full gap-3 overflow-x-auto p-3"
         data-dragging={activeId !== null ? 'true' : 'false'}
       >
         {visibleColumns.map((column) => {

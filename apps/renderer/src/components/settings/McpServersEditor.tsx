@@ -86,7 +86,7 @@ export function McpServersEditor({ workspaceId }: McpServersEditorProps): ReactE
           <li key={name} className="flex items-start justify-between gap-2 rounded-sm border border-border bg-bg-elevated p-2">
             <div className="flex-1 overflow-hidden">
               <p className="font-mono text-fg">{name}</p>
-              <pre className="mt-1 max-h-24 overflow-y-auto rounded-sm bg-bg p-1 font-mono text-[10px] text-fg-subtle">
+              <pre className="supa-scroll mt-1 max-h-24 overflow-y-auto rounded-sm bg-bg p-1 font-mono text-[10px] text-fg-subtle">
                 {JSON.stringify(value, null, 2)}
               </pre>
             </div>

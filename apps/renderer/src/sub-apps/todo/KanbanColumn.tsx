@@ -123,7 +123,7 @@ export function KanbanColumn({ column, tasks, taskIds, onOpenTask }: KanbanColum
       </header>
       <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
         <ul
-          className="flex flex-1 flex-col gap-2 overflow-y-auto p-2"
+          className="supa-scroll flex flex-1 flex-col gap-2 overflow-y-auto p-2"
           onContextMenu={handleContextMenu}
         >
           {tasks.length === 0 ? (

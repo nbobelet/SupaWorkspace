@@ -23,7 +23,7 @@ export function SecurityTab(): ReactElement {
   }
 
   return (
-    <div className="flex h-full flex-col gap-4 overflow-y-auto">
+    <div className="supa-scroll flex h-full flex-col gap-4 overflow-y-auto">
       <section>
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
           Sensitive command rules
