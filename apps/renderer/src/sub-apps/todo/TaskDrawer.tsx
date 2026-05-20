@@ -49,6 +49,7 @@ export function TaskDrawer({
   onClose,
 }: TaskDrawerProps): ReactElement {
   const closeRef = useRef<HTMLButtonElement>(null)
+  const drawerRef = useRef<HTMLDivElement>(null)
   const [shown, setShown] = useState(false)
 
   useEffect(() => {
@@ -68,6 +69,22 @@ export function TaskDrawer({
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  // Outside-click collapses the drawer. A click on a task card is exempt so it
+  // switches the drawer to that task (handled by the card's own onClick) rather
+  // than closing it. The opening click already fired before this listener
+  // attaches, so it cannot self-close on mount.
+  useEffect(() => {
+    const onPointerDown = (e: PointerEvent): void => {
+      const target = e.target as Node | null
+      if (!target) return
+      if (drawerRef.current?.contains(target)) return
+      if (target instanceof Element && target.closest('[data-task-card]')) return
+      onClose()
+    }
+    window.addEventListener('pointerdown', onPointerDown)
+    return () => window.removeEventListener('pointerdown', onPointerDown)
+  }, [onClose])
+
   const column = columns.find((c) => c.id === task.columnId)
 
   const timeline: { label: string; ts: number }[] = [
@@ -81,6 +98,7 @@ export function TaskDrawer({
 
   return (
     <div
+      ref={drawerRef}
       role="dialog"
       aria-modal="false"
       aria-label={`Task detail: ${task.title}`}
@@ -103,7 +121,7 @@ export function TaskDrawer({
         </button>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 py-3 text-sm">
+      <div className="supa-scroll flex-1 overflow-y-auto px-4 py-3 text-sm">
         <h2 className="text-base font-semibold leading-snug">{task.title}</h2>
 
         <dl className="mt-4 flex flex-col gap-2">

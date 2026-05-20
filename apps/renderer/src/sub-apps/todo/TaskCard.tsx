@@ -109,6 +109,7 @@ export function TaskCard({ task, onOpen }: TaskCardProps): ReactElement {
   return (
     <li
       ref={setNodeRef}
+      data-task-card=""
       style={style}
       className={[
         'group/card relative rounded-md border border-border bg-bg-elevated text-fg',
