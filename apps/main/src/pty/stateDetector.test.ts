@@ -630,4 +630,94 @@ describe('StateDetector', () => {
       warn.mockRestore()
     })
   })
+
+  // Regression (user-reported 2026-05-21): two state-trigger bugs.
+  //   Bug A — typing at an idle prompt flipped the session to `running`
+  //     because onInput fired on every keystroke. Typing must stay `idle`
+  //     until a command is actually submitted (carriage return).
+  //   Bug B — a long-running foreground command (any watch/serve/tail -f —
+  //     NOT a hardcoded name) flapped running<->idle<->done: output lulls
+  //     past FALLBACK_IDLE_MS settled to idle and the Notifier re-fired
+  //     markDone on each burst. With OSC 133 the command lifecycle (;C..;D)
+  //     latches `running`, so lulls never settle and done never flaps.
+  describe('typing at an idle prompt does not flip to running', () => {
+    it('plain keystrokes (no submit) keep a shell session idle', () => {
+      const { detector, events } = makeDetector()
+      detector.register('s1', 'shell')
+      for (const ch of ['a', 'b', 'c', 'd', 'e']) {
+        detector.onInput('s1', ch)
+      }
+      expect(detector.getState('s1')).toBe('idle')
+      expect(events.map((e) => e.state)).toEqual(['idle'])
+    })
+
+    it('plain keystrokes keep a claude session idle', () => {
+      const { detector } = makeDetector()
+      detector.register('s1', 'claude')
+      detector.onInput('s1', 'h')
+      detector.onInput('s1', 'i')
+      expect(detector.getState('s1')).toBe('idle')
+    })
+
+    it('submitting with a carriage return transitions to running', () => {
+      const { detector } = makeDetector()
+      detector.register('s1', 'shell')
+      detector.onInput('s1', 'ls -la')
+      expect(detector.getState('s1')).toBe('idle')
+
+      detector.onInput('s1', '\r')
+      expect(detector.getState('s1')).toBe('running')
+    })
+  })
+
+  describe('OSC 133 command-lifecycle: long-running foreground command does not flap', () => {
+    it('stays running from ;C until ;D regardless of output lulls', () => {
+      const { detector, events } = makeDetector()
+      detector.register('s1', 'shell')
+
+      // Shell integration emits 133;C when a (long-running) command starts.
+      detector.onData('s1', '\x1b]133;C\x07')
+      expect(detector.getState('s1')).toBe('running')
+
+      // Three output bursts, each separated by >FALLBACK_IDLE_MS.shell
+      // (10s), with NO ;D in between — the command is still alive.
+      for (let i = 0; i < 3; i++) {
+        detector.onData('s1', `rebuild ${i}: compiled successfully\r\n`)
+        vi.advanceTimersByTime(11000)
+        expect(detector.getState('s1')).toBe('running')
+      }
+
+      // No flaps: only the initial register idle event, zero done pulses.
+      expect(events.filter((e) => e.state === 'idle').length).toBe(1)
+      expect(events.some((e) => e.state === 'done')).toBe(false)
+
+      // 133;D finally settles it to idle.
+      detector.onData('s1', 'shutting down\r\n\x1b]133;D\x07')
+      expect(detector.getState('s1')).toBe('idle')
+    })
+
+    it('markDone is suppressed while a foreground command is alive (no done flap)', () => {
+      const { detector, events } = makeDetector()
+      detector.register('s1', 'shell')
+      detector.onData('s1', '\x1b]133;C\x07')
+      expect(detector.getState('s1')).toBe('running')
+
+      // Notifier mis-fires request-complete on each output burst.
+      detector.markDone('s1')
+      detector.markDone('s1')
+      expect(detector.getState('s1')).toBe('running')
+      expect(events.some((e) => e.state === 'done')).toBe(false)
+    })
+
+    it('a genuine done still pulses once the command has ended (;D seen)', () => {
+      const { detector } = makeDetector()
+      detector.register('s1', 'shell')
+      detector.onData('s1', '\x1b]133;C\x07')
+      detector.onData('s1', 'output\r\n\x1b]133;D\x07')
+      expect(detector.getState('s1')).toBe('idle')
+
+      detector.markDone('s1')
+      expect(detector.getState('s1')).toBe('done')
+    })
+  })
 })
