@@ -222,10 +222,12 @@ function ColumnView({
                   data-row-index={entryIndex}
                   tabIndex={tabIndex}
                   onFocus={() => onFocusColumn(columnIndex)}
-                  onClick={() => onSelect(columnIndex, entryIndex)}
-                  onDoubleClick={() =>
-                    isDir ? onActivate(columnIndex, entryIndex) : onOpenFile(entry)
+                  onClick={() =>
+                    isDir ? onActivate(columnIndex, entryIndex) : onSelect(columnIndex, entryIndex)
                   }
+                  onDoubleClick={() => {
+                    if (!isDir) onOpenFile(entry)
+                  }}
                   onContextMenu={(event) => {
                     if (!onContextMenu) return
                     event.preventDefault()
