@@ -9,9 +9,12 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
-import { useMemo, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react'
 import { ARCHIVE_COLUMN_ID, type Task, type TodoState } from '@shared/todo'
 import { KanbanColumn } from './KanbanColumn'
+import { resolveActionTargets } from './selection'
+import { TASK_ACTIONS, type CardAction } from './taskActions'
+import { useColumnSelection } from './useColumnSelection'
 import { useTodoStore } from './store'
 
 export interface KanbanBoardProps {
@@ -38,6 +41,38 @@ export function KanbanBoard({
 }: KanbanBoardProps): ReactElement {
   const reorder = useTodoStore((s) => s.reorder)
   const [activeId, setActiveId] = useState<string | null>(null)
+
+  const { selectedIdsFor, clear, toggle, selectRange, setMarquee } = useColumnSelection()
+
+  // Esc and any scroll dismiss the selection — a scrolled-away marquee result is
+  // stale, and Esc is the expected escape hatch.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') clear()
+    }
+    const onScroll = (): void => clear()
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('scroll', onScroll, true)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', onScroll, true)
+    }
+  }, [clear])
+
+  const tasksById = useMemo(() => new Map(state.tasks.map((t) => [t.id, t])), [state.tasks])
+
+  const handleCardAction = useCallback(
+    (action: CardAction, task: Task): void => {
+      const def = TASK_ACTIONS[action]
+      const targetIds = resolveActionTargets(def.scope, task.id, selectedIdsFor(task.columnId))
+      const targets = targetIds
+        .map((id) => tasksById.get(id))
+        .filter((t): t is Task => t !== undefined)
+      def.run({ clicked: task, targets, open: onOpenTask })
+      if (def.scope === 'selection') clear()
+    },
+    [selectedIdsFor, tasksById, onOpenTask, clear],
+  )
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -126,6 +161,9 @@ export function KanbanBoard({
       <div
         className="supa-scroll flex h-full gap-3 overflow-x-auto p-3"
         data-dragging={activeId !== null ? 'true' : 'false'}
+        onPointerDown={(event) => {
+          if (event.target === event.currentTarget) clear()
+        }}
       >
         {visibleColumns.map((column) => {
           const tasks = tasksByColumn.get(column.id) ?? []
@@ -136,7 +174,13 @@ export function KanbanBoard({
               column={column}
               tasks={tasks}
               taskIds={taskIds}
+              selectedIds={selectedIdsFor(column.id)}
               onOpenTask={onOpenTask}
+              onToggleSelect={(taskId) => toggle(column.id, taskId)}
+              onRangeSelect={(taskId) => selectRange(column.id, taskIds, taskId)}
+              onMarquee={(marquee, cards) => setMarquee(column.id, marquee, cards)}
+              onClearSelection={clear}
+              onCardAction={handleCardAction}
             />
           )
         })}

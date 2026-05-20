@@ -8,12 +8,15 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactElement,
   type RefObject,
 } from 'react'
 import type { Column, Task, TaskSeverity } from '@shared/todo'
 import { clampMenuPosition, VIEWPORT_MARGIN } from '../../lib/menuPosition'
 import { useWorkspaceStore } from '../../state/workspaceStore'
+import { rectFromPoints, type CardRect, type Rect } from './selection'
+import type { CardAction } from './taskActions'
 import { TaskCard } from './TaskCard'
 import { useTodoStore } from './store'
 
@@ -21,7 +24,28 @@ export interface KanbanColumnProps {
   column: Column
   tasks: Task[]
   taskIds: string[]
+  selectedIds: ReadonlySet<string>
   onOpenTask: (task: Task) => void
+  onToggleSelect: (taskId: string) => void
+  onRangeSelect: (taskId: string) => void
+  onMarquee: (marquee: Rect, cards: readonly CardRect[]) => void
+  onClearSelection: () => void
+  onCardAction: (action: CardAction, task: Task) => void
+}
+
+/** Below this drag distance a press is treated as a click, not a marquee. */
+const MARQUEE_THRESHOLD_PX = 4
+
+function collectCardRects(scroll: HTMLElement | null): CardRect[] {
+  if (!scroll) return []
+  const out: CardRect[] = []
+  scroll.querySelectorAll<HTMLElement>('[data-task-id]').forEach((el) => {
+    const id = el.dataset.taskId
+    if (!id) return
+    const r = el.getBoundingClientRect()
+    out.push({ id, rect: { left: r.left, top: r.top, right: r.right, bottom: r.bottom } })
+  })
+  return out
 }
 
 /** Severity applied to tasks created via the column quick-add. */
@@ -34,7 +58,18 @@ interface CursorPoint {
   y: number
 }
 
-export function KanbanColumn({ column, tasks, taskIds, onOpenTask }: KanbanColumnProps): ReactElement {
+export function KanbanColumn({
+  column,
+  tasks,
+  taskIds,
+  selectedIds,
+  onOpenTask,
+  onToggleSelect,
+  onRangeSelect,
+  onMarquee,
+  onClearSelection,
+  onCardAction,
+}: KanbanColumnProps): ReactElement {
   const { setNodeRef, isOver } = useDroppable({
     id: column.id,
     data: { type: 'column', columnId: column.id },
@@ -44,6 +79,48 @@ export function KanbanColumn({ column, tasks, taskIds, onOpenTask }: KanbanColum
 
   const [menuAt, setMenuAt] = useState<CursorPoint | null>(null)
   const [composerAt, setComposerAt] = useState<CursorPoint | null>(null)
+
+  const scrollRef = useRef<HTMLUListElement>(null)
+  const [marquee, setMarquee] = useState<Rect | null>(null)
+  const dragRef = useRef<{ startX: number; startY: number; moved: boolean } | null>(null)
+
+  // Marquee starts only on the bare scroll area: a press on a card must reach
+  // dnd-kit's PointerSensor instead. `currentTarget` is the <ul>, so an
+  // exact-match target means empty space was pressed.
+  const handlePointerDown = (event: ReactPointerEvent<HTMLUListElement>): void => {
+    if (event.target !== event.currentTarget || event.button !== 0) return
+    dragRef.current = { startX: event.clientX, startY: event.clientY, moved: false }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLUListElement>): void => {
+    const drag = dragRef.current
+    if (!drag) return
+    if (
+      !drag.moved &&
+      Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < MARQUEE_THRESHOLD_PX
+    ) {
+      return
+    }
+    drag.moved = true
+    const rect = rectFromPoints(
+      { x: drag.startX, y: drag.startY },
+      { x: event.clientX, y: event.clientY },
+    )
+    setMarquee(rect)
+    onMarquee(rect, collectCardRects(scrollRef.current))
+  }
+
+  const handlePointerUp = (event: ReactPointerEvent<HTMLUListElement>): void => {
+    const drag = dragRef.current
+    dragRef.current = null
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    setMarquee(null)
+    // A press that never moved is a click on empty space → clear the selection.
+    if (drag && !drag.moved) onClearSelection()
+  }
 
   // Right-click on the empty column area only — clicks bubbling from a task
   // card (or any descendant button/link) carry their own context and must not
@@ -123,8 +200,12 @@ export function KanbanColumn({ column, tasks, taskIds, onOpenTask }: KanbanColum
       </header>
       <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
         <ul
+          ref={scrollRef}
           className="supa-scroll flex flex-1 flex-col gap-2 overflow-y-auto p-2"
           onContextMenu={handleContextMenu}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
         >
           {tasks.length === 0 ? (
             <li
@@ -134,10 +215,38 @@ export function KanbanColumn({ column, tasks, taskIds, onOpenTask }: KanbanColum
               Empty
             </li>
           ) : (
-            tasks.map((task) => <TaskCard key={task.id} task={task} onOpen={onOpenTask} />)
+            tasks.map((task) => (
+              <TaskCard
+                key={task.id}
+                task={task}
+                selected={selectedIds.has(task.id)}
+                selectionCount={selectedIds.size}
+                onOpen={onOpenTask}
+                onToggleSelect={() => onToggleSelect(task.id)}
+                onRangeSelect={() => onRangeSelect(task.id)}
+                onClearSelection={onClearSelection}
+                onAction={(action) => onCardAction(action, task)}
+              />
+            ))
           )}
         </ul>
       </SortableContext>
+
+      {marquee && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed z-40 rounded-sm"
+          style={{
+            left: marquee.left,
+            top: marquee.top,
+            width: marquee.right - marquee.left,
+            height: marquee.bottom - marquee.top,
+            // Token-driven: re-themes with --color-accent, no hardcoded hex.
+            backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)',
+            border: '1px solid var(--color-accent)',
+          }}
+        />
+      )}
 
       {menuAt && (
         <ColumnContextMenu
@@ -170,7 +279,13 @@ interface ColumnContextMenuProps {
   onClose: () => void
 }
 
-function ColumnContextMenu({ x, y, ariaLabel, onAction, onClose }: ColumnContextMenuProps): ReactElement {
+function ColumnContextMenu({
+  x,
+  y,
+  ariaLabel,
+  onAction,
+  onClose,
+}: ColumnContextMenuProps): ReactElement {
   const ref = useRef<HTMLDivElement>(null)
   const position = useClampedPosition(ref, x, y)
   useDismissOnOutside(ref, onClose)
@@ -180,7 +295,11 @@ function ColumnContextMenu({ x, y, ariaLabel, onAction, onClose }: ColumnContext
       ref={ref}
       role="menu"
       aria-label={ariaLabel}
-      style={{ left: position.left, top: position.top, visibility: position.ready ? 'visible' : 'hidden' }}
+      style={{
+        left: position.left,
+        top: position.top,
+        visibility: position.ready ? 'visible' : 'hidden',
+      }}
       className="fixed z-50 min-w-[180px] rounded-md border border-border bg-bg-elevated py-1 shadow-lg outline-none"
     >
       <ul className="flex flex-col">
@@ -209,7 +328,13 @@ interface InlineComposerProps {
   onCancel: () => void
 }
 
-function InlineComposer({ x, y, ariaLabel, onSubmit, onCancel }: InlineComposerProps): ReactElement {
+function InlineComposer({
+  x,
+  y,
+  ariaLabel,
+  onSubmit,
+  onCancel,
+}: InlineComposerProps): ReactElement {
   const ref = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const [value, setValue] = useState('')
@@ -235,7 +360,11 @@ function InlineComposer({ x, y, ariaLabel, onSubmit, onCancel }: InlineComposerP
       ref={ref}
       role="dialog"
       aria-label={ariaLabel}
-      style={{ left: position.left, top: position.top, visibility: position.ready ? 'visible' : 'hidden' }}
+      style={{
+        left: position.left,
+        top: position.top,
+        visibility: position.ready ? 'visible' : 'hidden',
+      }}
       className="fixed z-50 w-64 rounded-md border border-border bg-bg-elevated p-2 shadow-lg"
     >
       <input

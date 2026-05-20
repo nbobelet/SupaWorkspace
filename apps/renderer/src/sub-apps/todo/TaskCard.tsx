@@ -5,14 +5,19 @@ import { useState, type CSSProperties, type MouseEvent, type ReactElement } from
 import type { Task, TaskSeverity } from '@shared/todo'
 import { ContextMenu, type ContextMenuItem } from '../../components/ContextMenu'
 import { KindPill } from './KindPill'
-import { useTodoStore } from './store'
+import type { CardAction } from './taskActions'
 
 export interface TaskCardProps {
   task: Task
+  selected: boolean
+  /** Size of the active selection in this card's column. */
+  selectionCount: number
   onOpen: (task: Task) => void
+  onToggleSelect: () => void
+  onRangeSelect: () => void
+  onClearSelection: () => void
+  onAction: (action: CardAction) => void
 }
-
-type CardAction = 'sev-low' | 'sev-medium' | 'sev-high' | 'edit' | 'delete'
 
 const SEVERITY_LABEL: Record<TaskSeverity, string> = {
   low: 'Low',
@@ -44,7 +49,16 @@ function severityDot(severity: TaskSeverity): ReactElement {
   )
 }
 
-export function TaskCard({ task, onOpen }: TaskCardProps): ReactElement {
+export function TaskCard({
+  task,
+  selected,
+  selectionCount,
+  onOpen,
+  onToggleSelect,
+  onRangeSelect,
+  onClearSelection,
+  onAction,
+}: TaskCardProps): ReactElement {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
     data: { type: 'task', columnId: task.columnId },
@@ -59,39 +73,48 @@ export function TaskCard({ task, onOpen }: TaskCardProps): ReactElement {
   }
 
   const deadline = task.deadline ? formatDeadline(task.deadline) : null
-  const overdue =
-    task.deadline !== null && task.deadline < Date.now() && task.dateDone === null
+  const overdue = task.deadline !== null && task.deadline < Date.now() && task.dateDone === null
+
+  // Selection gestures are modifier-clicks + marquee only, so a plain click
+  // keeps its original meaning (open the task) and just collapses any
+  // multi-selection — preserving the long-standing single-click-opens UX.
+  const handleClick = (event: MouseEvent): void => {
+    if (event.metaKey || event.ctrlKey) {
+      event.preventDefault()
+      onToggleSelect()
+      return
+    }
+    if (event.shiftKey) {
+      event.preventDefault()
+      onRangeSelect()
+      return
+    }
+    onClearSelection()
+    onOpen(task)
+  }
 
   const openMenu = (event: MouseEvent): void => {
     event.preventDefault()
+    // Right-clicking an unselected card collapses the selection so the menu's
+    // targets resolve unambiguously to this single card.
+    if (!selected) onClearSelection()
     setMenu({ x: event.clientX, y: event.clientY })
   }
 
   const handleAction = (action: CardAction): void => {
     setMenu(null)
-    if (action === 'edit') {
-      onOpen(task)
-      return
-    }
-    const workspaceId = findWorkspaceId(task.id)
-    if (!workspaceId) return
-    const store = useTodoStore.getState()
-    if (action === 'delete') {
-      void store.deleteTask(workspaceId, task)
-      return
-    }
-    const severity = severityOfAction(action)
-    if (severity && severity !== task.severity) {
-      void store.updateTask(workspaceId, { ...task, severity })
-    }
+    onAction(action)
   }
 
+  // With a live multi-selection, severity items stay enabled even if this card
+  // already matches — the bulk run skips per-task no-ops on the others.
+  const multi = selected && selectionCount > 1
   const items: ContextMenuItem<CardAction>[] = [
     ...SEVERITY_ORDER.map<ContextMenuItem<CardAction>>((sev) => ({
       action: SEVERITY_ACTION[sev],
       label: SEVERITY_LABEL[sev],
       icon: severityDot(sev),
-      disabled: task.severity === sev,
+      disabled: !multi && task.severity === sev,
     })),
     {
       action: 'edit',
@@ -100,7 +123,7 @@ export function TaskCard({ task, onOpen }: TaskCardProps): ReactElement {
     },
     {
       action: 'delete',
-      label: 'Delete',
+      label: multi ? `Delete ${selectionCount}` : 'Delete',
       icon: <Trash2 size={12} aria-hidden="true" />,
       danger: true,
     },
@@ -110,10 +133,13 @@ export function TaskCard({ task, onOpen }: TaskCardProps): ReactElement {
     <li
       ref={setNodeRef}
       data-task-card=""
+      data-task-id={task.id}
       style={style}
       className={[
-        'group/card relative rounded-md border border-border bg-bg-elevated text-fg',
-        'hover:border-border-strong focus-within:border-accent',
+        'group/card relative rounded-md border bg-bg-elevated text-fg',
+        selected
+          ? 'border-accent ring-1 ring-accent'
+          : 'border-border hover:border-border-strong focus-within:border-accent',
         isDragging ? 'z-10 shadow-lg' : '',
       ].join(' ')}
       onContextMenu={openMenu}
@@ -122,7 +148,7 @@ export function TaskCard({ task, onOpen }: TaskCardProps): ReactElement {
     >
       <button
         type="button"
-        onClick={() => onOpen(task)}
+        onClick={handleClick}
         className="flex w-full flex-col gap-2 px-3 py-2 text-left focus-visible:outline-none"
         aria-label={`Open task ${task.title}`}
       >
@@ -176,21 +202,6 @@ export function TaskCard({ task, onOpen }: TaskCardProps): ReactElement {
       )}
     </li>
   )
-}
-
-function severityOfAction(action: CardAction): TaskSeverity | null {
-  if (action === 'sev-low') return 'low'
-  if (action === 'sev-medium') return 'medium'
-  if (action === 'sev-high') return 'high'
-  return null
-}
-
-function findWorkspaceId(taskId: string): string | null {
-  const { byWorkspace } = useTodoStore.getState()
-  for (const [workspaceId, state] of Object.entries(byWorkspace)) {
-    if (state.tasks.some((t) => t.id === taskId)) return workspaceId
-  }
-  return null
 }
 
 function formatDeadline(ts: number): { relative: string; absolute: string } {
