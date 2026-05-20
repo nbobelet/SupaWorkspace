@@ -7,6 +7,7 @@ import { SessionTabs } from './components/SessionTabs'
 import { LayoutSwitcher } from './components/LayoutSwitcher'
 import { TodoPane } from './sub-apps/todo'
 import { DashboardPane } from './sub-apps/dashboard'
+import { ExplorerPane } from './sub-apps/explorer'
 import { SettingsPanel } from './components/settings/SettingsPanel'
 import { CommandPalette } from './components/CommandPalette'
 import { CmdGuardModal } from './components/CmdGuardModal'
@@ -36,9 +37,10 @@ export function App(): ReactElement {
   const activeSubApp = useActiveSubApp(activeWorkspaceId ?? '')
   const isTodoActive = !!activeWorkspaceId && activeSubApp === 'todo'
   const isDashboardActive = !!activeWorkspaceId && activeSubApp === 'dashboard'
+  const isExplorerActive = !!activeWorkspaceId && activeSubApp === 'explorer'
   // Terminal chrome (tab strip + layout switcher) shows only for the supatty
-  // sub-app. TODO and Dashboard are full-pane views that own the body.
-  const isTerminalView = !isTodoActive && !isDashboardActive
+  // sub-app. TODO, Dashboard, and Explorer are full-pane views that own the body.
+  const isTerminalView = !isTodoActive && !isDashboardActive && !isExplorerActive
 
   const setActive = useSessionStore((s) => s.setActive)
   const activeId = useSessionStore((s) => s.activeId)
@@ -118,7 +120,9 @@ export function App(): ReactElement {
       remembered && state.sessions[remembered]?.workspaceId === activeWorkspaceId
         ? remembered
         : null
-    const fallback = state.order.find((sid) => state.sessions[sid]?.workspaceId === activeWorkspaceId)
+    const fallback = state.order.find(
+      (sid) => state.sessions[sid]?.workspaceId === activeWorkspaceId,
+    )
     const target = stillValid ?? fallback ?? null
     if (target) {
       // Only mark the tab as active. Do NOT lazily spawn — switching workspaces
@@ -305,6 +309,8 @@ export function App(): ReactElement {
             <DashboardPane workspaceId={activeWorkspaceId} />
           ) : isTodoActive && activeWorkspaceId ? (
             <TodoPane workspaceId={activeWorkspaceId} />
+          ) : isExplorerActive && activeWorkspaceId ? (
+            <ExplorerPane workspaceId={activeWorkspaceId} />
           ) : (
             <PaneMosaic />
           )}

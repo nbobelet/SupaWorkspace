@@ -849,6 +849,7 @@ const SUB_APP_LABEL: Record<SubAppId, string> = {
   notes: 'Notes',
   todo: 'TODO',
   dashboard: 'Dashboard',
+  explorer: 'Explorer',
 }
 
 function SubAppRow({

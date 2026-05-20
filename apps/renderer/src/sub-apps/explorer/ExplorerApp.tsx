@@ -1,8 +1,15 @@
-import { useCallback, type ReactElement } from 'react'
+import { useCallback, useState, type ReactElement } from 'react'
 import { FolderTree, ShieldAlert } from 'lucide-react'
 import type { FileEntry } from '@shared/ipc'
 import { MillerColumns } from './MillerColumns'
+import { ExplorerContextMenu } from './ContextMenu'
 import { useExplorer } from './useExplorer'
+
+interface ContextMenuState {
+  entry: FileEntry
+  relPath: string
+  position: { clientX: number; clientY: number }
+}
 
 export interface ExplorerPaneProps {
   workspaceId: string
@@ -17,12 +24,20 @@ export interface ExplorerPaneProps {
  */
 export function ExplorerPane({ workspaceId }: ExplorerPaneProps): ReactElement {
   const explorer = useExplorer(workspaceId)
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
 
   const onOpenFile = useCallback(
     (entry: FileEntry) => {
       void explorer.openFile(entry)
     },
     [explorer],
+  )
+
+  const onContextMenu = useCallback(
+    (entry: FileEntry, relPath: string, position: { clientX: number; clientY: number }) => {
+      setContextMenu({ entry, relPath, position })
+    },
+    [],
   )
 
   const onResolveGrant = useCallback(() => {
@@ -81,8 +96,19 @@ export function ExplorerPane({ workspaceId }: ExplorerPaneProps): ReactElement {
           onSelect={explorer.select}
           onActivate={explorer.activate}
           onOpenFile={onOpenFile}
+          onContextMenu={onContextMenu}
         />
       </div>
+
+      {contextMenu && (
+        <ExplorerContextMenu
+          workspaceId={workspaceId}
+          entry={contextMenu.entry}
+          relPath={contextMenu.relPath}
+          position={contextMenu.position}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   )
 }

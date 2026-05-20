@@ -1,5 +1,5 @@
 import { resolve, sep } from 'node:path'
-import { ipcMain, shell } from 'electron'
+import { ipcMain } from 'electron'
 import {
   ExplorerListDirRequest,
   ExplorerOpenRequest,
@@ -10,6 +10,7 @@ import {
 } from '@shared/ipc'
 import type { WorkspaceStore } from '../workspace/WorkspaceStore'
 import { listDir } from './list-dir'
+import { openPath, revealInFileManager } from './shell-actions'
 
 /**
  * Clamp `relPath` to the workspace scope and return the absolute target, or
@@ -48,10 +49,11 @@ export function registerExplorerIpc(opts: { workspaceStore: WorkspaceStore }): (
     if (!ws.rootPath) return { opened: false }
     const target = clampToScope(ws.rootPath, req.relPath)
     if (target === null) return { opened: false }
-    // shell.openPath returns '' on success, a non-empty error string otherwise.
-    const error = await shell.openPath(target)
-    if (error) console.warn(`[explorer] openPath failed for ${target}: ${error}`)
-    return { opened: error === '' }
+    const result = await openPath(target)
+    if (!result.opened && result.error) {
+      console.warn(`[explorer] openPath failed for ${target}: ${result.error}`)
+    }
+    return { opened: result.opened }
   })
 
   ipcMain.handle(IpcChannel.ExplorerReveal, async (_, raw): Promise<void> => {
@@ -61,7 +63,7 @@ export function registerExplorerIpc(opts: { workspaceStore: WorkspaceStore }): (
     if (!ws.rootPath) return
     const target = clampToScope(ws.rootPath, req.relPath)
     if (target === null) return
-    shell.showItemInFolder(target)
+    revealInFileManager(target)
   })
 
   return () => {
