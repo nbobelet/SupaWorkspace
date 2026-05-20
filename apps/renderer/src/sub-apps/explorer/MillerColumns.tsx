@@ -1,8 +1,17 @@
-import { useCallback, useRef, type KeyboardEvent, type ReactElement } from 'react'
-import { ChevronRight, File as FileIcon, Folder } from 'lucide-react'
+import {
+  useCallback,
+  useRef,
+  type CSSProperties,
+  type KeyboardEvent,
+  type ReactElement,
+} from 'react'
+import { ChevronRight, ChevronsLeft, ChevronsRight, File as FileIcon, Folder } from 'lucide-react'
 import type { FileEntry, FileGitStatus } from '@shared/ipc'
 import type { ExplorerColumn, PreviewState } from './useExplorer'
 import { FilePreview } from './FilePreview'
+import { PreviewResizeHandle } from './PreviewResizeHandle'
+import { useResizable } from './useResizable'
+import { useExplorerPreviewStore } from './explorerPreviewStore'
 
 export interface MillerColumnsProps {
   columns: ExplorerColumn[]
@@ -286,14 +295,14 @@ function MetadataPanel({
 }): ReactElement {
   if (!entry) {
     return (
-      <div className="flex h-full w-96 shrink-0 items-center justify-center bg-bg-sunken px-4 text-center">
+      <div className="flex h-full items-center justify-center px-4 text-center">
         <p className="text-xs text-muted">Select a file to see its details.</p>
       </div>
     )
   }
   const statusColor = entry.gitStatus ? GIT_STATUS_TOKEN[entry.gitStatus] : undefined
   return (
-    <div className="flex h-full w-96 shrink-0 flex-col bg-bg-sunken" aria-label="File details">
+    <div className="flex h-full flex-col" aria-label="File details">
       <div className="flex shrink-0 flex-col gap-3 border-b border-border p-4">
         <div className="flex flex-col items-center gap-2 text-center">
           <FileIcon size={32} className="text-muted" aria-hidden="true" />
@@ -341,6 +350,22 @@ export function MillerColumns({
   onOpenFile,
   onContextMenu,
 }: MillerColumnsProps): ReactElement {
+  const gridRef = useRef<HTMLDivElement>(null)
+  const width = useExplorerPreviewStore((s) => s.width)
+  const collapsed = useExplorerPreviewStore((s) => s.collapsed)
+  const setWidth = useExplorerPreviewStore((s) => s.setWidth)
+  const setCollapsed = useExplorerPreviewStore((s) => s.setCollapsed)
+  const toggleCollapsed = useExplorerPreviewStore((s) => s.toggleCollapsed)
+
+  const { onPointerDown, onKeyDown, dragging } = useResizable({
+    containerRef: gridRef,
+    width,
+    collapsed,
+    onCommit: setWidth,
+    onCollapse: () => setCollapsed(true),
+    onExpand: () => setCollapsed(false),
+  })
+
   const focusColumn = useCallback((columnIndex: number) => {
     const column = document.querySelector<HTMLElement>(`[data-column-index="${columnIndex}"]`)
     const row =
@@ -351,26 +376,91 @@ export function MillerColumns({
 
   const activeColumnIndex = columns.length - 1
 
+  // The preview lives in its own grid track so it stays pinned to the right
+  // while the columns track scrolls horizontally. Collapsing animates the track
+  // width (compositable) instead of the panel's own `width` (jank).
+  const gridStyle: CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0,1fr) auto var(--preview-track)',
+    ['--preview-w' as string]: `${width}px`,
+    ['--preview-track' as string]: collapsed ? '2rem' : 'var(--preview-w)',
+  }
+
   return (
     <div
-      className="supa-scroll flex h-full overflow-x-auto bg-bg"
-      role="group"
-      aria-label="File browser columns"
+      ref={gridRef}
+      className={[
+        'h-full bg-bg',
+        dragging
+          ? ''
+          : 'transition-[grid-template-columns] duration-200 motion-reduce:transition-none',
+      ].join(' ')}
+      style={gridStyle}
     >
-      {columns.map((column, columnIndex) => (
-        <ColumnView
-          key={`${columnIndex}:${column.relPath}`}
-          column={column}
-          columnIndex={columnIndex}
-          isActiveColumn={columnIndex === activeColumnIndex}
-          onSelect={onSelect}
-          onActivate={onActivate}
-          onOpenFile={onOpenFile}
-          onFocusColumn={focusColumn}
-          onContextMenu={onContextMenu}
-        />
-      ))}
-      <MetadataPanel entry={metadata} preview={preview} onLoadFull={onLoadFull} />
+      <div
+        className="supa-scroll flex h-full overflow-x-auto bg-bg"
+        role="group"
+        aria-label="File browser columns"
+      >
+        {columns.map((column, columnIndex) => (
+          <ColumnView
+            key={`${columnIndex}:${column.relPath}`}
+            column={column}
+            columnIndex={columnIndex}
+            isActiveColumn={columnIndex === activeColumnIndex}
+            onSelect={onSelect}
+            onActivate={onActivate}
+            onOpenFile={onOpenFile}
+            onFocusColumn={focusColumn}
+            onContextMenu={onContextMenu}
+          />
+        ))}
+      </div>
+
+      <PreviewResizeHandle
+        width={width}
+        collapsed={collapsed}
+        dragging={dragging}
+        onPointerDown={onPointerDown}
+        onKeyDown={onKeyDown}
+      />
+
+      <aside
+        className="flex h-full min-w-0 flex-col overflow-hidden border-l border-border bg-bg-sunken"
+        aria-label="File preview"
+      >
+        {collapsed ? (
+          <button
+            type="button"
+            onClick={toggleCollapsed}
+            aria-expanded={false}
+            aria-label="Expand preview"
+            className="flex h-full w-full items-center justify-center text-muted hover:bg-fg/5 hover:text-fg"
+          >
+            <ChevronsLeft size={16} aria-hidden="true" />
+          </button>
+        ) : (
+          <>
+            <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-1.5">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                Preview
+              </span>
+              <button
+                type="button"
+                onClick={toggleCollapsed}
+                aria-expanded={true}
+                aria-label="Collapse preview"
+                className="rounded-sm p-0.5 text-muted hover:bg-fg/5 hover:text-fg"
+              >
+                <ChevronsRight size={14} aria-hidden="true" />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1">
+              <MetadataPanel entry={metadata} preview={preview} onLoadFull={onLoadFull} />
+            </div>
+          </>
+        )}
+      </aside>
     </div>
   )
 }
