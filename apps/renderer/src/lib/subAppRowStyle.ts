@@ -22,7 +22,7 @@ export interface SubAppRowState {
  */
 export function subAppRowBgClass(state: SubAppRowState): string {
   const isActiveSubApp = state.isActiveWorkspace && state.isActiveSubApp
-  const isSelfActive = state.isExpanded && state.hasChildren
+  const isSelfActive = state.isActiveWorkspace && state.isExpanded && state.hasChildren
   if (isActiveSubApp) return 'bg-bg-elevated text-fg'
   if (isSelfActive) return 'bg-bg-elevated/60 text-fg'
   return 'text-fg-subtle hover:bg-bg-elevated/40'

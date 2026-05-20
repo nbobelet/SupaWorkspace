@@ -62,6 +62,7 @@ import { addSessionWithFocus, jumpToSession } from '../lib/sessionFocus'
 import { closeSession } from '../lib/closeSession'
 import { computeExpandOnActivate, computeToggleAll } from '../lib/workspaceAccordion'
 import { effectiveCwdLabel, isDeletableWorkspace } from '../lib/homeWorkspace'
+import { subAppRowBgClass } from '../lib/subAppRowStyle'
 import { isHomeWorkspace } from '@shared/workspace'
 import type { Workspace, WorkspaceTreeNode } from '@shared/workspace'
 import type { SubAppId } from '@shared/sub-app'
@@ -867,14 +868,16 @@ function SubAppRow({
   const activeSubAppId = useActiveSubApp(workspaceId)
   // Two orthogonal signals: (1) "expanded with children" = structural anchor;
   // (2) "active sub-app of active workspace" = strongest visual (border-l
-  // bar via absolute span to avoid layout shift on the 240px sidebar).
-  const isActiveSubApp = workspaceId === activeWorkspaceId && subAppId === activeSubAppId
-  const isSelfActive = isExpanded && hasChildren
-  const rowBgClass = isActiveSubApp
-    ? 'bg-bg-elevated text-fg'
-    : isSelfActive
-      ? 'bg-bg-elevated/60 text-fg'
-      : 'text-fg-subtle hover:bg-bg-elevated/40'
+  // bar via absolute span to avoid layout shift on the 240px sidebar). Both
+  // are gated on the active workspace — see subAppRowBgClass.
+  const isActiveWorkspace = workspaceId === activeWorkspaceId
+  const isActiveSubApp = isActiveWorkspace && subAppId === activeSubAppId
+  const rowBgClass = subAppRowBgClass({
+    isActiveWorkspace,
+    isActiveSubApp,
+    isExpanded,
+    hasChildren,
+  })
 
   const btnRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
