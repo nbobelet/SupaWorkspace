@@ -52,6 +52,7 @@ export const IpcChannel = {
   ExplorerListDir: 'explorer:list-dir',
   ExplorerOpen: 'explorer:open',
   ExplorerReveal: 'explorer:reveal',
+  ExplorerReadFile: 'explorer:read-file',
 } as const
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel]
 
@@ -458,3 +459,48 @@ export const ExplorerRevealRequest = z.object({
   relPath: z.string(),
 })
 export type ExplorerRevealRequest = z.infer<typeof ExplorerRevealRequest>
+
+export const ExplorerReadFileRequest = z.object({
+  workspaceId: z.string().uuid(),
+  /** File relative to the workspace rootPath. */
+  relPath: z.string(),
+  /** Bypass the head cap and read the whole file (the "Load full file" path). */
+  full: z.boolean().optional(),
+})
+export type ExplorerReadFileRequest = z.infer<typeof ExplorerReadFileRequest>
+
+/**
+ * Content preview of a single file for the Explorer's rightmost panel.
+ *
+ * - `text`: decoded UTF-8 content, capped to the first 256 KB unless `full` was
+ *   requested. `truncated` flags that more bytes exist on disk than `content`
+ *   carries (the UI offers "Load full file"). `size` is the on-disk byte size.
+ * - `image`: a base64 data URL the renderer drops straight into an `<img>`.
+ * - `binary`: not previewable (null byte in the head, or oversized image).
+ * - `needs-grant`: the path resolves outside the workspace scope — same
+ *   PathGrant flow as `ExplorerListDirResponse`.
+ */
+export const ExplorerReadFileResponse = z.discriminatedUnion('status', [
+  z.object({
+    status: z.literal('text'),
+    content: z.string(),
+    encoding: z.literal('utf8'),
+    truncated: z.boolean(),
+    size: z.number().int().min(0),
+  }),
+  z.object({
+    status: z.literal('image'),
+    dataUrl: z.string(),
+    mime: z.string(),
+    size: z.number().int().min(0),
+  }),
+  z.object({
+    status: z.literal('binary'),
+    size: z.number().int().min(0),
+  }),
+  z.object({
+    status: z.literal('needs-grant'),
+    path: z.string(),
+  }),
+])
+export type ExplorerReadFileResponse = z.infer<typeof ExplorerReadFileResponse>

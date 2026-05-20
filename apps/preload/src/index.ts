@@ -34,6 +34,7 @@ import type {
   SettingsUpdatePayload,
   ExplorerListDirResponse,
   ExplorerOpenResponse,
+  ExplorerReadFileResponse,
 } from '@shared/ipc'
 import type { SessionSnapshotListResponse, SessionSnapshotClearResponse } from '@shared/snapshot'
 import type {
@@ -170,6 +171,12 @@ const api = {
       ipcRenderer.invoke(IpcChannel.ExplorerListDir, { workspaceId, relPath }),
     open: (workspaceId: string, relPath: string): Promise<ExplorerOpenResponse> =>
       ipcRenderer.invoke(IpcChannel.ExplorerOpen, { workspaceId, relPath }),
+    readFile: (
+      workspaceId: string,
+      relPath: string,
+      full?: boolean,
+    ): Promise<ExplorerReadFileResponse> =>
+      ipcRenderer.invoke(IpcChannel.ExplorerReadFile, { workspaceId, relPath, full }),
     reveal: (workspaceId: string, relPath: string): Promise<void> =>
       ipcRenderer.invoke(IpcChannel.ExplorerReveal, { workspaceId, relPath }),
   },

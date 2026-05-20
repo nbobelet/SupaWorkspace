@@ -3,13 +3,16 @@ import { ipcMain } from 'electron'
 import {
   ExplorerListDirRequest,
   ExplorerOpenRequest,
+  ExplorerReadFileRequest,
   ExplorerRevealRequest,
   IpcChannel,
   type ExplorerListDirResponse,
   type ExplorerOpenResponse,
+  type ExplorerReadFileResponse,
 } from '@shared/ipc'
 import type { WorkspaceStore } from '../workspace/WorkspaceStore'
 import { listDir } from './list-dir'
+import { readFile } from './read-file'
 import { openPath, revealInFileManager } from './shell-actions'
 
 /**
@@ -56,6 +59,16 @@ export function registerExplorerIpc(opts: { workspaceStore: WorkspaceStore }): (
     return { opened: result.opened }
   })
 
+  ipcMain.handle(IpcChannel.ExplorerReadFile, async (_, raw): Promise<ExplorerReadFileResponse> => {
+    const req = ExplorerReadFileRequest.parse(raw)
+    const ws = workspaceStore.getById(req.workspaceId)
+    if (!ws) throw new Error(`Unknown workspace: ${req.workspaceId}`)
+    if (!ws.rootPath) {
+      return { status: 'needs-grant', path: req.relPath }
+    }
+    return readFile(ws.rootPath, req.relPath, req.full ?? false)
+  })
+
   ipcMain.handle(IpcChannel.ExplorerReveal, async (_, raw): Promise<void> => {
     const req = ExplorerRevealRequest.parse(raw)
     const ws = workspaceStore.getById(req.workspaceId)
@@ -69,6 +82,7 @@ export function registerExplorerIpc(opts: { workspaceStore: WorkspaceStore }): (
   return () => {
     ipcMain.removeHandler(IpcChannel.ExplorerListDir)
     ipcMain.removeHandler(IpcChannel.ExplorerOpen)
+    ipcMain.removeHandler(IpcChannel.ExplorerReadFile)
     ipcMain.removeHandler(IpcChannel.ExplorerReveal)
   }
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { ExplorerListDirResponse, FileEntry } from '@shared/ipc'
+import type { ExplorerListDirResponse, ExplorerReadFileResponse, FileEntry } from '@shared/ipc'
 
 /**
  * One Miller column = the listing of a single directory plus the index of the
@@ -115,11 +115,27 @@ const ROOT_COLUMN: ExplorerColumn = {
 
 const INITIAL: ExplorerState = { columns: [ROOT_COLUMN], grantPrompt: null }
 
+/**
+ * Preview of the metadata-target file's content for the rightmost panel.
+ * `idle` = nothing selected (or a directory). `loaded` carries the discriminated
+ * IPC response (text / image / binary / needs-grant). Keyed on the target file
+ * so switching selection refetches.
+ */
+export type PreviewState =
+  | { kind: 'idle' }
+  | { kind: 'loading' }
+  | { kind: 'loaded'; result: ExplorerReadFileResponse }
+  | { kind: 'error'; message: string }
+
 export interface ExplorerApi {
   /** Live column stack (root is always columns[0]). */
   columns: ExplorerColumn[]
   /** File whose metadata the rightmost placeholder panel should render. */
   metadata: FileEntry | null
+  /** Content preview of the metadata-target file. */
+  preview: PreviewState
+  /** Re-fetch the current preview target uncapped (the "Load full file" path). */
+  loadFullPreview: () => Promise<void>
   /** Pending out-of-scope grant prompt, if any. */
   grantPrompt: ExplorerGrantPrompt | null
   /** Select a row without descending (cursor move within a column). */
@@ -143,10 +159,50 @@ export interface ExplorerApi {
  */
 export function useExplorer(workspaceId: string): ExplorerApi {
   const [state, setState] = useState<ExplorerState>(INITIAL)
+  const [preview, setPreview] = useState<PreviewState>({ kind: 'idle' })
 
   useEffect(() => {
     setState(INITIAL)
   }, [workspaceId])
+
+  const target = metadataTarget(state.columns)
+  const targetRel = target ? relPathOf(state.columns, target) : null
+
+  // Fetch a capped preview whenever the metadata target changes. Keyed on the
+  // resolved relPath (POSIX, OS-stable) rather than the absolute path so a
+  // re-list that re-creates entries doesn't spuriously refetch.
+  useEffect(() => {
+    if (!targetRel) {
+      setPreview({ kind: 'idle' })
+      return
+    }
+    let cancelled = false
+    setPreview({ kind: 'loading' })
+    window.ws.explorer
+      .readFile(workspaceId, targetRel, false)
+      .then((result) => {
+        if (!cancelled) setPreview({ kind: 'loaded', result })
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setPreview({ kind: 'error', message: err instanceof Error ? err.message : String(err) })
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [workspaceId, targetRel])
+
+  const loadFullPreview = useCallback(async (): Promise<void> => {
+    if (!targetRel) return
+    setPreview({ kind: 'loading' })
+    try {
+      const result = await window.ws.explorer.readFile(workspaceId, targetRel, true)
+      setPreview({ kind: 'loaded', result })
+    } catch (err) {
+      setPreview({ kind: 'error', message: err instanceof Error ? err.message : String(err) })
+    }
+  }, [workspaceId, targetRel])
 
   const listInto = useCallback(
     async (columnIndex: number, relPath: string): Promise<void> => {
@@ -238,7 +294,9 @@ export function useExplorer(workspaceId: string): ExplorerApi {
 
   return {
     columns: state.columns,
-    metadata: metadataTarget(state.columns),
+    metadata: target,
+    preview,
+    loadFullPreview,
     grantPrompt: state.grantPrompt,
     select,
     activate,
