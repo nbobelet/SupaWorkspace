@@ -93,6 +93,8 @@ export function ExplorerPane({ workspaceId }: ExplorerPaneProps): ReactElement {
         <MillerColumns
           columns={explorer.columns}
           metadata={explorer.metadata}
+          preview={explorer.preview}
+          onLoadFull={explorer.loadFullPreview}
           onSelect={explorer.select}
           onActivate={explorer.activate}
           onOpenFile={onOpenFile}

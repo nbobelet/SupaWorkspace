@@ -1,11 +1,16 @@
 import { useCallback, useRef, type KeyboardEvent, type ReactElement } from 'react'
 import { ChevronRight, File as FileIcon, Folder } from 'lucide-react'
 import type { FileEntry, FileGitStatus } from '@shared/ipc'
-import type { ExplorerColumn } from './useExplorer'
+import type { ExplorerColumn, PreviewState } from './useExplorer'
+import { FilePreview } from './FilePreview'
 
 export interface MillerColumnsProps {
   columns: ExplorerColumn[]
   metadata: FileEntry | null
+  /** Content preview of the metadata target. */
+  preview: PreviewState
+  /** Re-fetch the preview uncapped (wired to the "Load full file" button). */
+  onLoadFull: () => void
   onSelect: (columnIndex: number, entryIndex: number) => void
   onActivate: (columnIndex: number, entryIndex: number) => void
   onOpenFile: (entry: FileEntry) => void
@@ -265,46 +270,57 @@ function ColumnView({
 }
 
 /**
- * v1 metadata placeholder — name, type, size, git status. No rich preview / no
- * syntax highlight (that is v2). Always the rightmost panel; renders an empty
- * hint when the deepest selection is a directory.
+ * Rightmost panel: file metadata (name, type, size, git status) stacked above a
+ * live content preview (syntax-highlighted text, inline image, or a notice).
+ * The meta block is fixed; the preview region owns its own scroll. Renders an
+ * empty hint when the deepest selection is a directory.
  */
-function MetadataPanel({ entry }: { entry: FileEntry | null }): ReactElement {
+function MetadataPanel({
+  entry,
+  preview,
+  onLoadFull,
+}: {
+  entry: FileEntry | null
+  preview: PreviewState
+  onLoadFull: () => void
+}): ReactElement {
   if (!entry) {
     return (
-      <div className="supa-scroll flex h-full w-72 shrink-0 items-center justify-center overflow-y-auto bg-bg-sunken px-4 text-center">
+      <div className="flex h-full w-96 shrink-0 items-center justify-center bg-bg-sunken px-4 text-center">
         <p className="text-xs text-muted">Select a file to see its details.</p>
       </div>
     )
   }
   const statusColor = entry.gitStatus ? GIT_STATUS_TOKEN[entry.gitStatus] : undefined
   return (
-    <div
-      className="supa-scroll flex h-full w-72 shrink-0 flex-col gap-4 overflow-y-auto bg-bg-sunken p-4"
-      aria-label="File details"
-    >
-      <div className="flex flex-col items-center gap-2 pt-2 text-center">
-        <FileIcon size={40} className="text-muted" aria-hidden="true" />
-        <p className="break-all text-sm font-semibold text-fg" title={entry.name}>
-          {entry.name}
-        </p>
+    <div className="flex h-full w-96 shrink-0 flex-col bg-bg-sunken" aria-label="File details">
+      <div className="flex shrink-0 flex-col gap-3 border-b border-border p-4">
+        <div className="flex flex-col items-center gap-2 text-center">
+          <FileIcon size={32} className="text-muted" aria-hidden="true" />
+          <p className="break-all text-sm font-semibold text-fg" title={entry.name}>
+            {entry.name}
+          </p>
+        </div>
+        <dl className="flex flex-col gap-2 text-xs">
+          <div className="flex items-center justify-between gap-2">
+            <dt className="text-muted">Type</dt>
+            <dd className="text-fg-subtle">{entry.type === 'dir' ? 'Folder' : 'File'}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <dt className="text-muted">Size</dt>
+            <dd className="text-fg-subtle">{formatSize(entry.size)}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <dt className="text-muted">Git status</dt>
+            <dd className="font-medium" style={statusColor ? { color: statusColor } : undefined}>
+              {entry.gitStatus ?? 'clean'}
+            </dd>
+          </div>
+        </dl>
       </div>
-      <dl className="flex flex-col gap-2 text-xs">
-        <div className="flex items-center justify-between gap-2">
-          <dt className="text-muted">Type</dt>
-          <dd className="text-fg-subtle">{entry.type === 'dir' ? 'Folder' : 'File'}</dd>
-        </div>
-        <div className="flex items-center justify-between gap-2">
-          <dt className="text-muted">Size</dt>
-          <dd className="text-fg-subtle">{formatSize(entry.size)}</dd>
-        </div>
-        <div className="flex items-center justify-between gap-2">
-          <dt className="text-muted">Git status</dt>
-          <dd className="font-medium" style={statusColor ? { color: statusColor } : undefined}>
-            {entry.gitStatus ?? 'clean'}
-          </dd>
-        </div>
-      </dl>
+      <div className="min-h-0 flex-1">
+        <FilePreview fileName={entry.name} preview={preview} onLoadFull={onLoadFull} />
+      </div>
     </div>
   )
 }
@@ -318,6 +334,8 @@ function MetadataPanel({ entry }: { entry: FileEntry | null }): ReactElement {
 export function MillerColumns({
   columns,
   metadata,
+  preview,
+  onLoadFull,
   onSelect,
   onActivate,
   onOpenFile,
@@ -352,7 +370,7 @@ export function MillerColumns({
           onContextMenu={onContextMenu}
         />
       ))}
-      <MetadataPanel entry={metadata} />
+      <MetadataPanel entry={metadata} preview={preview} onLoadFull={onLoadFull} />
     </div>
   )
 }

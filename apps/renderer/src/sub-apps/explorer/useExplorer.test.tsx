@@ -94,6 +94,7 @@ interface WsMock {
   listDir: ReturnType<typeof vi.fn>
   open: ReturnType<typeof vi.fn>
   reveal: ReturnType<typeof vi.fn>
+  readFile: ReturnType<typeof vi.fn>
   requestPath: ReturnType<typeof vi.fn>
 }
 
@@ -101,16 +102,19 @@ function installWsMock(): WsMock {
   const listDir = vi.fn<(w: string, r: string) => Promise<ExplorerListDirResponse>>()
   const open = vi.fn().mockResolvedValue({ opened: true })
   const reveal = vi.fn().mockResolvedValue(undefined)
+  const readFile = vi
+    .fn()
+    .mockResolvedValue({ status: 'text', content: '', encoding: 'utf8', truncated: false, size: 0 })
   const requestPath = vi.fn()
   ;(globalThis as unknown as { window: Window }).window = globalThis.window ?? ({} as Window)
   Object.defineProperty(window, 'ws', {
     configurable: true,
     value: {
-      explorer: { listDir, open, reveal },
+      explorer: { listDir, open, reveal, readFile },
       permissions: { requestPath },
     },
   })
-  return { listDir, open, reveal, requestPath }
+  return { listDir, open, reveal, readFile, requestPath }
 }
 
 // Drive the hook through a host component so its effects run under React.

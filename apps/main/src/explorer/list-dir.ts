@@ -24,7 +24,7 @@ export type ListDirResult =
  * Returns the clamped absolute path, or `null` when the target lies outside
  * the workspace scope (caller surfaces a structured `needs-grant`).
  */
-async function clampToScope(rootPath: string, relPath: string): Promise<string | null> {
+export async function clampToScope(rootPath: string, relPath: string): Promise<string | null> {
   const base = resolve(rootPath)
   const target = resolve(base, relPath)
   if (!isInside(base, target)) return null
