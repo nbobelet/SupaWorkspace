@@ -1,6 +1,7 @@
 import type { SessionState, SessionType } from '@shared/session'
 import {
   detectUserInputRequired,
+  isOsc133CommandStart,
   isOsc133Done,
 } from '../notifications/detectUserInputRequired'
 import { detectIdlePrompt, stripAnsi } from '../notifications/detectIdlePrompt'
@@ -44,6 +45,15 @@ interface SessionTrack {
   type: SessionType
   buffer: string
   hasReceivedData: boolean
+  // Set true the first time a well-formed OSC 133;C/;D marker is seen. From
+  // then on the command lifecycle (;C->running, ;D->idle) is authoritative
+  // and the heuristic timers are off: `running` is latched between ;C and ;D
+  // so output lulls never flap the state.
+  integrated: boolean
+  // True between ;C and ;D — a foreground command is currently executing.
+  // Suppresses spurious `done` pulses (a watch/serve command keeps emitting
+  // output that the Notifier mis-reads as request-complete).
+  commandAlive: boolean
   idleTimer: ReturnType<typeof setTimeout> | null
   fallbackTimer: ReturnType<typeof setTimeout> | null
   doneTimer: ReturnType<typeof setTimeout> | null
@@ -61,6 +71,8 @@ export class StateDetector {
       type,
       buffer: '',
       hasReceivedData: false,
+      integrated: false,
+      commandAlive: false,
       idleTimer: null,
       fallbackTimer: null,
       doneTimer: null,
@@ -85,6 +97,38 @@ export class StateDetector {
     track.hasReceivedData = true
     track.buffer = (track.buffer + data).slice(-RECENT_BUFFER_CAP)
 
+    // OSC 133 command-lifecycle markers are evaluated BEFORE the ANSI-noise
+    // guard: shell integration emits them as pure escape sequences that strip
+    // to empty, so the guard would otherwise swallow them. A well-formed
+    // ;C/;D flips the session into `integrated` mode — from here the command
+    // lifecycle is authoritative and the heuristic timers stay off.
+    const sawDone = isOsc133Done(track.buffer)
+    const sawCommandStart = isOsc133CommandStart(track.buffer)
+    if (sawDone || sawCommandStart) track.integrated = true
+
+    // ;D wins when both are present in the tail: it marks the END of the most
+    // recent command, while a stale ;C may still linger in the rolling window.
+    if (sawDone) {
+      track.commandAlive = false
+      if (track.state === 'running') {
+        this.clearTimers(track)
+        this.transition(sessionId, 'idle', 'osc133-done')
+      }
+      return
+    }
+
+    // ;C = command started. Latch `running` (no idle/fallback timer) until the
+    // matching ;D — content-agnostic, so any long-running foreground command
+    // stays running through every output lull.
+    if (sawCommandStart) {
+      track.commandAlive = true
+      this.clearTimers(track)
+      if (track.state !== 'running') {
+        this.transition(sessionId, 'running', 'osc133-command-start')
+      }
+      return
+    }
+
     // ANSI-noise guard, applied in EVERY state. PSReadLine cursor-blink,
     // Claude TUI spinner / cursor-blink, OSC title repaints all emit pure
     // escape bursts that strip to empty. Skipping them keeps:
@@ -98,17 +142,6 @@ export class StateDetector {
     //   - `asking` sticky (cursor blinks on a selector menu don't drop
     //     the asking state).
     if (stripAnsi(data).trim() === '') {
-      return
-    }
-
-    // Authoritative shell-emitted done marker (OSC 133;D). When present,
-    // skip the debounce + fallback path entirely. The shell told us
-    // explicitly that the command finished — trust it.
-    if (isOsc133Done(track.buffer)) {
-      if (track.state === 'running') {
-        this.clearTimers(track)
-        this.transition(sessionId, 'idle', 'osc133-done')
-      }
       return
     }
 
@@ -133,6 +166,13 @@ export class StateDetector {
     // flap. The pulse ends naturally via doneTimer or via explicit signals
     // (onInput, onExit, asking detection above).
     if (track.state === 'done') return
+
+    // Integrated sessions: data alone never auto-transitions. `running` is
+    // latched between ;C and ;D, and `idle` is held while the prompt is shown
+    // (so echoed keystrokes — visible text on the prompt line — never flip to
+    // running). The heuristic timers below are for non-integrated shells and
+    // claude only.
+    if (track.integrated) return
 
     this.clearTimers(track)
 
@@ -190,9 +230,27 @@ export class StateDetector {
     }, FALLBACK_IDLE_MS[track.type])
   }
 
-  onInput(sessionId: string): void {
+  // `data` is the raw bytes written to the pty. A command is only "submitted"
+  // when it contains a carriage return / newline — plain keystrokes (editing
+  // the command line) must NOT flip the session to `running`. `data` is
+  // omitted by callers that mean an explicit submit (and by older tests), in
+  // which case we treat it as a submit for back-compat.
+  onInput(sessionId: string, data?: string): void {
     const track = this.tracks.get(sessionId)
     if (!track) return
+
+    const isSubmit = data === undefined || /[\r\n]/.test(data)
+    if (!isSubmit) return
+
+    // Integrated shells get their authoritative `running` from ;C (emitted by
+    // the shell right after the line is accepted). Don't pre-empt it here —
+    // just clear any lingering done pulse so the next command starts clean.
+    if (track.integrated) {
+      track.buffer = ''
+      this.clearDoneTimer(track)
+      return
+    }
+
     track.buffer = ''
     this.clearTimers(track)
     this.clearDoneTimer(track)
@@ -219,6 +277,7 @@ export class StateDetector {
     if (!track) return
     this.clearTimers(track)
     this.clearDoneTimer(track)
+    track.commandAlive = false
     track.state = 'ending'
     this.events.onStateChange(sessionId, 'ending', exitCode)
   }
@@ -232,6 +291,11 @@ export class StateDetector {
     const track = this.tracks.get(sessionId)
     if (!track) return
     if (track.state !== 'running' && track.state !== 'idle') return
+    // Suppress the pulse while a foreground command is still alive (a ;C with
+    // no matching ;D yet). A watch/serve command keeps producing output that
+    // the Notifier mis-reads as request-complete; without this guard each
+    // burst would flap the tab pill running -> done -> idle.
+    if (track.commandAlive) return
     this.clearDoneTimer(track)
     this.transition(sessionId, 'done', 'request-complete')
     track.doneTimer = setTimeout(() => {

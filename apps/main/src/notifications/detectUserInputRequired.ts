@@ -7,6 +7,7 @@ import { stripAnsi } from './detectIdlePrompt'
 // ST, or end-of-tail — never followed by another letter.
 const OSC_133_TERMINATOR = '(?:;|\\x07|\\x1b\\\\|$)'
 const OSC_133_ASKING_RE = new RegExp(`\\x1b\\]133;A${OSC_133_TERMINATOR}`)
+const OSC_133_CMDSTART_RE = new RegExp(`\\x1b\\]133;C${OSC_133_TERMINATOR}`)
 const OSC_133_DONE_RE = new RegExp(`\\x1b\\]133;D${OSC_133_TERMINATOR}`)
 
 export const USER_INPUT_PATTERNS: RegExp[] = [
@@ -66,8 +67,7 @@ export function isClaudeSelectorMenu(buffer: string): boolean {
 //   - lone `> 1.` lines (require a second numbered option within 500 chars)
 // Strips ANSI first because the highlighted line is usually colored, which
 // would otherwise push the `>` cursor away from the line-start anchor.
-const CLAUDE_NUMBERED_SELECTOR_RE =
-  /(?:^|\n)>\s+\d+\.\s+\S[\s\S]{0,500}?\n[ \t]+\d+\.\s+\S/
+const CLAUDE_NUMBERED_SELECTOR_RE = /(?:^|\n)>\s+\d+\.\s+\S[\s\S]{0,500}?\n[ \t]+\d+\.\s+\S/
 
 export function isClaudeNumberedSelector(buffer: string): boolean {
   if (!buffer) return false
@@ -80,10 +80,21 @@ export function detectUserInputRequired(buffer: string): boolean {
   const tail = buffer.length > TAIL_LENGTH ? buffer.slice(-TAIL_LENGTH) : buffer
   if (USER_INPUT_PATTERNS.some((re) => re.test(tail))) return true
   return (
-    isClaudeBoxAsking(buffer) ||
-    isClaudeSelectorMenu(buffer) ||
-    isClaudeNumberedSelector(buffer)
+    isClaudeBoxAsking(buffer) || isClaudeSelectorMenu(buffer) || isClaudeNumberedSelector(buffer)
   )
+}
+
+// OSC 133;C = "command pre-exec" marker emitted by shell-integration aware
+// shells right before the just-submitted command runs. Authoritative
+// "command started": stateDetector transitions running and LATCHES it until
+// the matching ;D (no output-lull fallback). Unlike ;A (prompt-start, kept as
+// an asking-class signal for back-compat), ;C is content-agnostic — it marks
+// the command lifecycle, not any output text, so a long-running foreground
+// command stays running from ;C to ;D no matter how bursty its output is.
+export function isOsc133CommandStart(buffer: string): boolean {
+  if (!buffer) return false
+  const tail = buffer.length > TAIL_LENGTH ? buffer.slice(-TAIL_LENGTH) : buffer
+  return OSC_133_CMDSTART_RE.test(tail)
 }
 
 // OSC 133;D = "command done" marker emitted by shell-integration aware shells

@@ -4,6 +4,7 @@ const enabled = (process.env['DEBUG'] ?? '').split(',').includes('supat:state')
 
 export type TransitionReason =
   | 'osc133-done'
+  | 'osc133-command-start'
   | 'osc133-prompt'
   | 'regex-prompt'
   | 'regex-asking'

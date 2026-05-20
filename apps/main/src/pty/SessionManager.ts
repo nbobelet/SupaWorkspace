@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { spawn as ptySpawn, type IPty } from '@homebridge/node-pty-prebuilt-multiarch'
 import type { SessionConfig, SessionState, SessionType } from '@shared/session'
+import { applyShellIntegration } from './shellIntegration'
 import { StateDetector } from './stateDetector'
 import { createTraceWriter, type TraceWriter } from './traceWriter'
 
@@ -46,7 +47,12 @@ export class SessionManager {
     const sessionId = randomUUID()
     const { command, args, label } = this.resolveCommand(opts.type, opts.label)
 
-    const pty = ptySpawn(command, args, {
+    // Inject OSC 133 shell integration for real shells so the command
+    // lifecycle (;C/;D) drives session state authoritatively. claude is a TUI
+    // (input-driven, no shell integration) and is left untouched.
+    const spawnArgs = opts.type === 'shell' ? applyShellIntegration(command, args) : args
+
+    const pty = ptySpawn(command, spawnArgs, {
       name: 'xterm-256color',
       cols: opts.cols,
       rows: opts.rows,
@@ -89,7 +95,10 @@ export class SessionManager {
   write(sessionId: string, data: string): void {
     const session = this.sessions.get(sessionId)
     if (!session) return
-    this.stateDetector.onInput(sessionId)
+    // Pass the raw input so the detector can tell a command submit (contains
+    // a carriage return) from plain keystrokes — typing must not flip the
+    // session to `running`.
+    this.stateDetector.onInput(sessionId, data)
     this.events.onUserInput?.(sessionId)
     session.pty.write(data)
   }
@@ -160,7 +169,10 @@ export class SessionManager {
     this.stateDetector.markDone(sessionId)
   }
 
-  private resolveCommand(type: SessionType, label?: string): {
+  private resolveCommand(
+    type: SessionType,
+    label?: string,
+  ): {
     command: string
     args: string[]
     label: string
@@ -198,12 +210,16 @@ export class SessionManager {
   private findOnPath(name: string): string | null {
     const pathEnv = process.env['PATH'] ?? ''
     const pathSep = process.platform === 'win32' ? ';' : ':'
-    const exts = process.platform === 'win32' ? (process.env['PATHEXT'] ?? '.EXE;.CMD;.BAT').split(';') : ['']
+    const exts =
+      process.platform === 'win32' ? (process.env['PATHEXT'] ?? '.EXE;.CMD;.BAT').split(';') : ['']
     for (const dir of pathEnv.split(pathSep)) {
       if (!dir) continue
       for (const ext of exts) {
         const candidate = `${dir}${process.platform === 'win32' ? '\\' : '/'}${name}${ext.startsWith('.') ? '' : ''}`
-        const full = name.includes('.') || ext === '' ? `${dir}${process.platform === 'win32' ? '\\' : '/'}${name}` : `${candidate}${ext}`
+        const full =
+          name.includes('.') || ext === ''
+            ? `${dir}${process.platform === 'win32' ? '\\' : '/'}${name}`
+            : `${candidate}${ext}`
         if (existsSync(full)) return full
       }
     }
