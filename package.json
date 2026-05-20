@@ -1,6 +1,6 @@
 {
   "name": "supa-workspace",
-  "version": "0.2.0",
+  "version": "2.0.0",
   "private": true,
   "description": "SupaWorkspace — multi-session terminal workspace manager for the claude CLI",
   "type": "module",
