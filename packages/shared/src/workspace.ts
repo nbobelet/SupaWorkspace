@@ -21,16 +21,37 @@ export const WorkspaceColor = z.object({
 })
 export type WorkspaceColor = z.infer<typeof WorkspaceColor>
 
+/**
+ * `folder` workspaces are anchored to a real directory: `rootPath` is set and
+ * doubles as the security scope boundary (PermissionGate). `home` is the single
+ * permanent default workspace — `rootPath: null` (no implicit scope, every
+ * out-of-scope access must go through a PathGrant). `workdir` is a cwd hint only
+ * (where terminals spawn) and grants NO permission; it diverges from `rootPath`
+ * solely on `home`. Both fields are nullable and kept distinct on purpose.
+ */
+export const WorkspaceKind = z.enum(['folder', 'home'])
+export type WorkspaceKind = z.infer<typeof WorkspaceKind>
+
 export const Workspace = z.object({
   id: z.string().uuid(),
   name: z.string(),
-  rootPath: z.string(),
+  kind: WorkspaceKind.default('folder'),
+  rootPath: z.string().nullable(),
+  workdir: z.string().nullable().default(null),
   createdAt: z.number().int(),
   lastOpenedAt: z.number().int(),
   permissions: WorkspacePermissions,
   color: WorkspaceColor.optional(),
 })
 export type Workspace = z.infer<typeof Workspace>
+
+/** Deterministic id for the singleton Home workspace (valid uuid v4 shape). */
+export const HOME_WORKSPACE_ID = '00000000-0000-4000-8000-000000000001'
+export const HOME_WORKSPACE_NAME = 'Home'
+
+export function isHomeWorkspace(ws: Pick<Workspace, 'kind'>): boolean {
+  return ws.kind === 'home'
+}
 
 /**
  * Sidebar tree node — 3-level hierarchy rendered by `WorkspaceSidebar`:

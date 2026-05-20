@@ -23,6 +23,7 @@ export const IpcChannel = {
   WorkspaceReadSettings: 'workspace:read-settings',
   WorkspaceWriteSettings: 'workspace:write-settings',
   WorkspaceSetColor: 'workspace:set-color',
+  WorkspaceSetWorkdir: 'workspace:set-workdir',
   PermissionsRequestPath: 'permissions:request-path',
   PermissionsRevokePath: 'permissions:revoke-path',
   PermissionsGrantConflicts: 'permissions:grant-conflicts',
@@ -227,6 +228,12 @@ export const WorkspaceSetColorRequest = z.object({
   hue: z.number().min(0).max(360),
 })
 export type WorkspaceSetColorRequest = z.infer<typeof WorkspaceSetColorRequest>
+
+export const WorkspaceSetWorkdirRequest = z.object({
+  workspaceId: z.string().uuid(),
+  workdir: z.string().nullable(),
+})
+export type WorkspaceSetWorkdirRequest = z.infer<typeof WorkspaceSetWorkdirRequest>
 
 export const PathGrantConflict = z.object({
   path: z.string(),

@@ -7,6 +7,7 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   FolderPlus,
+  Home as HomeIcon,
   LayoutDashboard,
   ListTodo,
   Plus,
@@ -50,6 +51,8 @@ import { TerminalTypeIcon } from './TerminalTypeIcon'
 import { addSessionWithFocus, jumpToSession } from '../lib/sessionFocus'
 import { closeSession } from '../lib/closeSession'
 import { computeExpandOnActivate, computeToggleAll } from '../lib/workspaceAccordion'
+import { effectiveCwdLabel, isDeletableWorkspace } from '../lib/homeWorkspace'
+import { isHomeWorkspace } from '@shared/workspace'
 import type { Workspace, WorkspaceTreeNode } from '@shared/workspace'
 import type { SubAppId } from '@shared/sub-app'
 
@@ -179,6 +182,7 @@ export function WorkspaceSidebar(): ReactElement {
   const [settingsOpenFor, setSettingsOpenFor] = useState<string | null>(null)
   const [notesOverlayFor, setNotesOverlayFor] = useState<string | null>(null)
   const setColor = useWorkspaceStore((s) => s.setColor)
+  const setWorkdir = useWorkspaceStore((s) => s.setWorkdir)
 
   // Accordion expanded state — active workspace starts expanded along with
   // its `supatty` sub-app (the always-populated leaf-bearing sub-app). The
@@ -354,6 +358,22 @@ export function WorkspaceSidebar(): ReactElement {
     setMenu(null)
   }, [])
 
+  // workdir is a cwd hint only (no scope grant). Prompt-based for this cut;
+  // a folder picker / file explorer lands in a later feature.
+  const editWorkdir = useCallback(
+    async (workspace: Workspace) => {
+      setMenu(null)
+      const input = window.prompt(
+        `Working directory for "${workspace.name}" (blank to clear):`,
+        workspace.workdir ?? '',
+      )
+      if (input === null) return
+      const trimmed = input.trim()
+      await setWorkdir(workspace.id, trimmed === '' ? null : trimmed)
+    },
+    [setWorkdir],
+  )
+
   // The tree itself is currently consumed only by `WorkspaceTile` via the
   // `workspaceNode` prop below. Building it at the top of the component (and
   // memoizing it on every dependency that feeds into it) keeps the shape
@@ -478,6 +498,7 @@ export function WorkspaceSidebar(): ReactElement {
                   onStartRename={() => rename.startRename(w.id, w.name)}
                   onChangeColor={(hue) => void setColor(w.id, hue)}
                   onDelete={() => void remove(w.id)}
+                  onSetWorkdir={() => void editWorkdir(w)}
                 />
               )
             })}
@@ -492,8 +513,17 @@ export function WorkspaceSidebar(): ReactElement {
           onClose={() => setMenu(null)}
           items={[
             { label: 'Rename', onClick: () => startRenameFromMenu(menu.workspace) },
+            { label: 'Set workdir…', onClick: () => void editWorkdir(menu.workspace) },
             { label: 'Reveal in explorer', onClick: () => void reveal(menu.workspace.id) },
-            { label: 'Remove from list', onClick: () => void remove(menu.workspace.id), danger: true },
+            ...(isDeletableWorkspace(menu.workspace)
+              ? [
+                  {
+                    label: 'Remove from list',
+                    onClick: () => void remove(menu.workspace.id),
+                    danger: true,
+                  },
+                ]
+              : []),
           ]}
         />
       )}
@@ -532,6 +562,7 @@ interface WorkspaceTileProps {
   onStartRename: () => void
   onChangeColor: (hue: number) => void
   onDelete: () => void
+  onSetWorkdir: () => void
 }
 
 function WorkspaceTile({
@@ -559,8 +590,10 @@ function WorkspaceTile({
   onStartRename,
   onChangeColor,
   onDelete,
+  onSetWorkdir,
 }: WorkspaceTileProps): ReactElement {
   const worstStatus = useWorkspaceWorstStatus(w.id)
+  const isHome = isHomeWorkspace(w)
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: w.id,
@@ -620,7 +653,11 @@ function WorkspaceTile({
           onContextMenu={(e) => onContextMenu(e, w)}
           className="flex min-w-0 flex-1 items-start gap-2 text-left"
         >
-          {w.color ? (
+          {isHome ? (
+            <span className="mt-0.5 shrink-0 text-accent" aria-hidden="true">
+              <HomeIcon size={13} />
+            </span>
+          ) : w.color ? (
             <span
               className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
               style={pillStyle}
@@ -647,9 +684,22 @@ function WorkspaceTile({
             ) : (
               <span className="truncate font-medium">{w.name}</span>
             )}
-            <span className="truncate text-[11px] text-muted" title={w.rootPath}>
-              {w.rootPath}
-            </span>
+            {isHome && !w.workdir ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onSetWorkdir()
+                }}
+                className="truncate text-left text-[11px] text-muted hover:text-accent"
+              >
+                [set workdir]
+              </button>
+            ) : (
+              <span className="truncate text-[11px] text-muted" title={effectiveCwdLabel(w)}>
+                {effectiveCwdLabel(w)}
+              </span>
+            )}
           </span>
         </button>
         <span
@@ -682,6 +732,7 @@ function WorkspaceTile({
           onRename={onStartRename}
           onChangeColor={onChangeColor}
           onDelete={onDelete}
+          onSetWorkdir={onSetWorkdir}
           onClose={onSettingsToggle}
         />
       )}

@@ -284,9 +284,9 @@ export function SessionTabs(): ReactElement {
       {activeWorkspace && (
         <span
           className="ml-auto max-w-[40%] truncate font-mono text-[10px] text-muted"
-          title={activeWorkspace.rootPath}
+          title={activeWorkspace.rootPath ?? activeWorkspace.workdir ?? 'global — no folder'}
         >
-          {truncateMiddle(activeWorkspace.rootPath)}
+          {truncateMiddle(activeWorkspace.rootPath ?? activeWorkspace.workdir ?? 'global')}
         </span>
       )}
       <span className="ml-2 shrink-0 text-[10px] text-muted">last-used: {lastUsedType}</span>

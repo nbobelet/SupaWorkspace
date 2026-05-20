@@ -18,6 +18,11 @@ export interface KanbanBoardProps {
   workspaceId: string
   state: TodoState
   showArchive: boolean
+  /**
+   * When false, drag-reorder is suppressed (aggregated cross-workspace view):
+   * a merged-list index cannot be mapped back to one workspace's column order.
+   */
+  reorderable?: boolean
   /** Optional filter applied to tasks before they reach a column. */
   filterTask?: (task: Task) => boolean
   onOpenTask: (task: Task) => void
@@ -27,6 +32,7 @@ export function KanbanBoard({
   workspaceId,
   state,
   showArchive,
+  reorderable = true,
   filterTask,
   onOpenTask,
 }: KanbanBoardProps): ReactElement {
@@ -69,6 +75,7 @@ export function KanbanBoard({
 
   const handleDragEnd = (event: DragEndEvent): void => {
     setActiveId(null)
+    if (!reorderable) return
     const { active, over } = event
     if (!over) return
 

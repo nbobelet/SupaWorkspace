@@ -17,6 +17,7 @@ import {
   WorkspaceRenameRequest,
   WorkspaceRevealRequest,
   WorkspaceSetColorRequest,
+  WorkspaceSetWorkdirRequest,
   WorkspaceWriteClaudeMdRequest,
   WorkspaceWriteSettingsRequest,
   type PermissionsGrantConflictsResponse,
@@ -78,6 +79,11 @@ export function registerWorkspaceIpc(opts: {
     return workspaceStore.setColor(req.workspaceId, req.hue)
   })
 
+  ipcMain.handle(IpcChannel.WorkspaceSetWorkdir, async (_, raw): Promise<Workspace> => {
+    const req = WorkspaceSetWorkdirRequest.parse(raw)
+    return workspaceStore.setWorkdir(req.workspaceId, req.workdir)
+  })
+
   ipcMain.handle(
     IpcChannel.PermissionsGrantConflicts,
     async (): Promise<PermissionsGrantConflictsResponse> => {
@@ -89,13 +95,17 @@ export function registerWorkspaceIpc(opts: {
     const req = WorkspaceRevealRequest.parse(raw)
     const workspace = workspaceStore.getById(req.workspaceId)
     if (!workspace) return
-    await shell.openPath(workspace.rootPath)
+    // Home has no rootPath; fall back to its cwd hint, else nothing to reveal.
+    const target = workspace.rootPath ?? workspace.workdir
+    if (!target) return
+    await shell.openPath(target)
   })
 
   ipcMain.handle(IpcChannel.WorkspaceReadClaudeMd, async (_, raw): Promise<WorkspaceReadClaudeMdResponse> => {
     const req = WorkspaceReadClaudeMdRequest.parse(raw)
     const workspace = workspaceStore.getById(req.workspaceId)
     if (!workspace) throw new Error(`Unknown workspace: ${req.workspaceId}`)
+    if (!workspace.rootPath) return { content: '', exists: false }
     const path = join(workspace.rootPath, CLAUDE_MD)
     if (!existsSync(path)) return { content: '', exists: false }
     const content = await readFile(path, 'utf8')
@@ -106,6 +116,7 @@ export function registerWorkspaceIpc(opts: {
     const req = WorkspaceWriteClaudeMdRequest.parse(raw)
     const workspace = workspaceStore.getById(req.workspaceId)
     if (!workspace) throw new Error(`Unknown workspace: ${req.workspaceId}`)
+    if (!workspace.rootPath) throw new Error('Workspace has no root path (CLAUDE.md unavailable)')
     const path = join(workspace.rootPath, CLAUDE_MD)
     await writeFile(path, req.content, 'utf8')
   })
@@ -114,6 +125,7 @@ export function registerWorkspaceIpc(opts: {
     const req = WorkspaceReadSettingsRequest.parse(raw)
     const workspace = workspaceStore.getById(req.workspaceId)
     if (!workspace) throw new Error(`Unknown workspace: ${req.workspaceId}`)
+    if (!workspace.rootPath) return { settings: {}, exists: false }
     const path = join(workspace.rootPath, CLAUDE_SETTINGS)
     if (!existsSync(path)) return { settings: {}, exists: false }
     const raw_ = await readFile(path, 'utf8')
@@ -130,6 +142,7 @@ export function registerWorkspaceIpc(opts: {
     const req = WorkspaceWriteSettingsRequest.parse(raw)
     const workspace = workspaceStore.getById(req.workspaceId)
     if (!workspace) throw new Error(`Unknown workspace: ${req.workspaceId}`)
+    if (!workspace.rootPath) throw new Error('Workspace has no root path (settings unavailable)')
     const path = join(workspace.rootPath, CLAUDE_SETTINGS)
     await mkdir(dirname(path), { recursive: true })
     await writeFile(path, JSON.stringify(req.settings, null, 2), 'utf8')
@@ -146,6 +159,7 @@ export function registerWorkspaceIpc(opts: {
     ipcMain.removeHandler(IpcChannel.WorkspaceReadSettings)
     ipcMain.removeHandler(IpcChannel.WorkspaceWriteSettings)
     ipcMain.removeHandler(IpcChannel.WorkspaceSetColor)
+    ipcMain.removeHandler(IpcChannel.WorkspaceSetWorkdir)
     ipcMain.removeHandler(IpcChannel.PermissionsGrantConflicts)
   }
 }

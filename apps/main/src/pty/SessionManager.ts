@@ -37,7 +37,7 @@ export class SessionManager {
 
   spawn(opts: {
     workspaceId: string
-    rootPath: string
+    cwd: string
     type: SessionType
     cols: number
     rows: number
@@ -50,7 +50,7 @@ export class SessionManager {
       name: 'xterm-256color',
       cols: opts.cols,
       rows: opts.rows,
-      cwd: opts.rootPath,
+      cwd: opts.cwd,
       env: process.env as Record<string, string>,
     })
 
@@ -59,7 +59,7 @@ export class SessionManager {
       workspaceId: opts.workspaceId,
       type: opts.type,
       label,
-      cwd: opts.rootPath,
+      cwd: opts.cwd,
       createdAt: Date.now(),
     }
 

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { SubAppId } from '@shared/sub-app'
 import type { Workspace } from '@shared/workspace'
+import { sortWorkspacesHomeFirst } from '../lib/homeWorkspace'
 
 interface WorkspaceStoreState {
   workspaces: Workspace[]
@@ -14,6 +15,7 @@ interface WorkspaceStoreState {
   reorderWorkspaces: (fromIndex: number, toIndex: number) => void
   setActiveWorkspace: (id: string | null) => void
   setColor: (id: string, hue: number) => Promise<void>
+  setWorkdir: (id: string, workdir: string | null) => Promise<void>
   getActiveWorkspace: () => Workspace | null
   setActiveSubApp: (workspaceId: string, subAppId: SubAppId) => void
   toggleSubAppExpanded: (workspaceId: string, subAppId: SubAppId) => void
@@ -36,13 +38,16 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
   expandedSubApps: {},
 
   setWorkspaces: (workspaces) =>
-    set((prev) => ({
-      workspaces,
-      activeWorkspaceId:
-        prev.activeWorkspaceId && workspaces.some((w) => w.id === prev.activeWorkspaceId)
-          ? prev.activeWorkspaceId
-          : (workspaces[0]?.id ?? null),
-    })),
+    set((prev) => {
+      const sorted = sortWorkspacesHomeFirst(workspaces)
+      return {
+        workspaces: sorted,
+        activeWorkspaceId:
+          prev.activeWorkspaceId && sorted.some((w) => w.id === prev.activeWorkspaceId)
+            ? prev.activeWorkspaceId
+            : (sorted[0]?.id ?? null),
+      }
+    }),
 
   upsertWorkspace: (workspace) =>
     set((prev) => {
@@ -80,6 +85,13 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
 
   setColor: async (id: string, hue: number): Promise<void> => {
     const updated = await window.ws.workspace.setColor(id, hue)
+    set((prev) => ({
+      workspaces: prev.workspaces.map((w) => (w.id === id ? updated : w)),
+    }))
+  },
+
+  setWorkdir: async (id: string, workdir: string | null): Promise<void> => {
+    const updated = await window.ws.workspace.setWorkdir(id, workdir)
     set((prev) => ({
       workspaces: prev.workspaces.map((w) => (w.id === id ? updated : w)),
     }))

@@ -12,6 +12,7 @@ import {
 import type { SessionConfig } from '@shared/session'
 import type { SessionManager } from '../pty/SessionManager'
 import type { WorkspaceStore } from '../workspace/WorkspaceStore'
+import { getEffectiveCwd } from '../workspace/getEffectiveCwd'
 
 export function registerSessionIpc(opts: {
   sessionManager: SessionManager
@@ -27,7 +28,7 @@ export function registerSessionIpc(opts: {
     if (!workspace) throw new Error(`Unknown workspace: ${req.workspaceId}`)
     const config = sessionManager.spawn({
       workspaceId: workspace.id,
-      rootPath: workspace.rootPath,
+      cwd: getEffectiveCwd(workspace),
       type: req.type,
       cols: req.cols,
       rows: req.rows,

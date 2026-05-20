@@ -2,7 +2,13 @@ import { randomUUID } from 'node:crypto'
 import { basename } from 'node:path'
 import { existsSync } from 'node:fs'
 import Store from 'electron-store'
-import type { PathGrant, Workspace, WorkspacePermissions } from '@shared/workspace'
+import {
+  HOME_WORKSPACE_ID,
+  HOME_WORKSPACE_NAME,
+  type PathGrant,
+  type Workspace,
+  type WorkspacePermissions,
+} from '@shared/workspace'
 import { pickWorkspaceHue } from './pickWorkspaceHue'
 
 interface StoreShape {
@@ -10,6 +16,19 @@ interface StoreShape {
 }
 
 const defaultPermissions = (): WorkspacePermissions => ({ extraPaths: [], allow: [], deny: [] })
+
+function makeHomeWorkspace(now: number): Workspace {
+  return {
+    id: HOME_WORKSPACE_ID,
+    name: HOME_WORKSPACE_NAME,
+    kind: 'home',
+    rootPath: null,
+    workdir: null,
+    createdAt: now,
+    lastOpenedAt: now,
+    permissions: defaultPermissions(),
+  }
+}
 
 export class WorkspaceStore {
   private readonly store: Store<StoreShape>
@@ -20,10 +39,24 @@ export class WorkspaceStore {
       defaults: { workspaces: [] },
       clearInvalidConfig: true,
     })
+    this.ensureHome()
   }
 
+  /** Seed the singleton Home workspace if absent. Idempotent. */
+  private ensureHome(): void {
+    const all = this.store.get('workspaces', [])
+    if (all.some((w) => w.id === HOME_WORKSPACE_ID)) return
+    this.store.set('workspaces', [makeHomeWorkspace(Date.now()), ...all])
+  }
+
+  /** Home is pinned first; folder workspaces follow, most-recent first. */
   list(): Workspace[] {
-    return [...this.store.get('workspaces', [])].sort((a, b) => b.lastOpenedAt - a.lastOpenedAt)
+    const all = [...this.store.get('workspaces', [])]
+    const home = all.filter((w) => w.id === HOME_WORKSPACE_ID)
+    const rest = all
+      .filter((w) => w.id !== HOME_WORKSPACE_ID)
+      .sort((a, b) => b.lastOpenedAt - a.lastOpenedAt)
+    return [...home, ...rest]
   }
 
   getById(id: string): Workspace | undefined {
@@ -52,7 +85,9 @@ export class WorkspaceStore {
     const workspace: Workspace = {
       id: randomUUID(),
       name: basename(rootPath),
+      kind: 'folder',
       rootPath,
+      workdir: null,
       createdAt: now,
       lastOpenedAt: now,
       permissions: defaultPermissions(),
@@ -78,7 +113,18 @@ export class WorkspaceStore {
     return updated
   }
 
+  /** Sets the cwd hint (no scope grant). `null` clears it. */
+  setWorkdir(id: string, workdir: string | null): Workspace {
+    const ws = this.getById(id)
+    if (!ws) throw new Error(`Workspace not found: ${id}`)
+    const updated: Workspace = { ...ws, workdir }
+    this.replace(updated)
+    return updated
+  }
+
+  /** Home is permanent — removal requests for it are ignored. */
   remove(id: string): void {
+    if (id === HOME_WORKSPACE_ID) return
     const next = this.store.get('workspaces', []).filter((w) => w.id !== id)
     this.store.set('workspaces', next)
   }

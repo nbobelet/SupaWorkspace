@@ -152,14 +152,16 @@ export function CommandPalette(): ReactElement | null {
                 {workspaces.map((w) => (
                   <PaletteItem
                     key={w.id}
-                    value={`workspace-${w.id}-${w.name}-${w.rootPath}`}
+                    value={`workspace-${w.id}-${w.name}-${w.rootPath ?? w.workdir ?? ''}`}
                     onSelect={() => {
                       setActiveWorkspace(w.id)
                       close()
                     }}
                   >
                     <span>{w.name}</span>
-                    <span className="ml-2 truncate text-[10px] text-muted">{w.rootPath}</span>
+                    <span className="ml-2 truncate text-[10px] text-muted">
+                      {w.rootPath ?? w.workdir ?? 'global'}
+                    </span>
                   </PaletteItem>
                 ))}
               </Command.Group>

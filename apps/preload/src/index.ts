@@ -94,6 +94,8 @@ const api = {
       ipcRenderer.invoke(IpcChannel.WorkspaceWriteSettings, { workspaceId, settings }),
     setColor: (workspaceId: string, hue: number): Promise<Workspace> =>
       ipcRenderer.invoke(IpcChannel.WorkspaceSetColor, { workspaceId, hue }),
+    setWorkdir: (workspaceId: string, workdir: string | null): Promise<Workspace> =>
+      ipcRenderer.invoke(IpcChannel.WorkspaceSetWorkdir, { workspaceId, workdir }),
   },
   permissions: {
     requestPath: (req: PermissionsRequestPathRequest): Promise<PermissionsRequestPathResponse> =>

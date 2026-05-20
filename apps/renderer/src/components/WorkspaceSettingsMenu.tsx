@@ -1,7 +1,8 @@
 import { useEffect, type ReactElement } from 'react'
 import { toast } from 'sonner'
-import { Pencil, Palette, Trash2 } from 'lucide-react'
+import { FolderCog, Pencil, Palette, Trash2 } from 'lucide-react'
 import type { Workspace } from '@shared/workspace'
+import { isHomeWorkspace } from '@shared/workspace'
 
 const PALETTE_HUES = [15, 45, 95, 145, 195, 230, 270, 310]
 
@@ -10,6 +11,7 @@ interface WorkspaceSettingsMenuProps {
   onRename: () => void
   onChangeColor: (hue: number) => void
   onDelete: () => void
+  onSetWorkdir: () => void
   onClose: () => void
 }
 
@@ -18,6 +20,7 @@ export function WorkspaceSettingsMenu({
   onRename,
   onChangeColor,
   onDelete,
+  onSetWorkdir,
   onClose,
 }: WorkspaceSettingsMenuProps): ReactElement {
   useEffect(() => {
@@ -67,6 +70,17 @@ export function WorkspaceSettingsMenu({
         <Pencil size={14} aria-hidden="true" />
         <span>Rename</span>
       </button>
+      <button
+        type="button"
+        onClick={() => {
+          onClose()
+          onSetWorkdir()
+        }}
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-fg hover:bg-bg"
+      >
+        <FolderCog size={14} aria-hidden="true" />
+        <span>{workspace.workdir ? 'Change workdir' : 'Set workdir'}</span>
+      </button>
       <div className="px-3 py-1.5">
         <div className="mb-1.5 flex items-center gap-2 text-xs text-fg-subtle">
           <Palette size={14} aria-hidden="true" />
@@ -95,14 +109,16 @@ export function WorkspaceSettingsMenu({
           })}
         </div>
       </div>
-      <button
-        type="button"
-        onClick={confirmDelete}
-        className="flex w-full items-center gap-2 border-t border-border px-3 py-1.5 text-left text-xs text-error hover:bg-error/10"
-      >
-        <Trash2 size={14} aria-hidden="true" />
-        <span>Delete workspace</span>
-      </button>
+      {!isHomeWorkspace(workspace) && (
+        <button
+          type="button"
+          onClick={confirmDelete}
+          className="flex w-full items-center gap-2 border-t border-border px-3 py-1.5 text-left text-xs text-error hover:bg-error/10"
+        >
+          <Trash2 size={14} aria-hidden="true" />
+          <span>Delete workspace</span>
+        </button>
+      )}
     </div>
   )
 }

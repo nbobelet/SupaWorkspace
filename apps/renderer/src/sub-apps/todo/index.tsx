@@ -1,16 +1,29 @@
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react'
 import { ARCHIVE_COLUMN_ID, type Task } from '@shared/todo'
+import { HOME_WORKSPACE_ID } from '@shared/workspace'
 import { KanbanBoard } from './KanbanBoard'
 import { SettingsTab } from './SettingsTab'
 import { TaskDrawer } from './TaskDrawer'
 import { TaskEditor } from './TaskEditor'
 import { TodoHeader } from './Header'
 import { DEFAULT_FILTER, type FilterState } from './FilterBar'
+import { mergeTodoStates } from './aggregate'
 import { useTodoStore } from './store'
+import { useWorkspaceStore } from '../../state/workspaceStore'
 
 export interface TodoPaneProps {
   workspaceId: string
 }
+
+/**
+ * Home's TODO is global: by default it aggregates every workspace's tasks
+ * (read + edit, routed back to the owning workspace), with a "Non classé" chip
+ * that narrows to Home's own bucket. Folder workspaces keep the single-scope
+ * behaviour. Cross-workspace drag-reorder is disabled in aggregated view —
+ * a toIndex relative to the merged list cannot map back to one workspace's
+ * column order without corruption.
+ */
+type TodoScope = 'all' | 'unfiled'
 
 type EditorState =
   | { mode: 'closed' }
@@ -25,7 +38,7 @@ const SEVERITY_RANK: Record<NonNullable<Task['severity']>, number> = {
 }
 
 export function TodoPane({ workspaceId }: TodoPaneProps): ReactElement {
-  const state = useTodoStore((s) => s.byWorkspace[workspaceId])
+  const byWorkspace = useTodoStore((s) => s.byWorkspace)
   const load = useTodoStore((s) => s.load)
   const createTask = useTodoStore((s) => s.createTask)
   const updateTask = useTodoStore((s) => s.updateTask)
@@ -33,15 +46,43 @@ export function TodoPane({ workspaceId }: TodoPaneProps): ReactElement {
   const setColumns = useTodoStore((s) => s.setColumns)
   const toast = useTodoStore((s) => s.toast)
   const dismissToast = useTodoStore((s) => s.dismissToast)
+  const workspaces = useWorkspaceStore((s) => s.workspaces)
 
+  const isHome = workspaceId === HOME_WORKSPACE_ID
+  const [scope, setScope] = useState<TodoScope>('all')
   const [showArchive, setShowArchive] = useState(false)
   const [filter, setFilter] = useState<FilterState>(DEFAULT_FILTER)
   const [editor, setEditor] = useState<EditorState>({ mode: 'closed' })
   const [settingsOpen, setSettingsOpen] = useState(false)
 
   useEffect(() => {
-    void load(workspaceId)
-  }, [load, workspaceId])
+    if (isHome) {
+      for (const w of workspaces) void load(w.id)
+    } else {
+      void load(workspaceId)
+    }
+  }, [isHome, workspaces, load, workspaceId])
+
+  const aggregate = isHome && scope === 'all'
+
+  const aggregated = useMemo(() => {
+    if (!aggregate) return null
+    const home = byWorkspace[workspaceId]
+    if (!home) return null
+    const entries = workspaces
+      .map((w) => ({ workspaceId: w.id, state: byWorkspace[w.id] }))
+      .filter((e): e is { workspaceId: string; state: NonNullable<typeof e.state> } => !!e.state)
+    return mergeTodoStates(entries, home)
+  }, [aggregate, byWorkspace, workspaces, workspaceId])
+
+  const state = aggregate ? (aggregated?.state ?? null) : (byWorkspace[workspaceId] ?? null)
+
+  // Route a task mutation to the workspace that actually owns it.
+  const targetFor = useCallback(
+    (task: Task): string =>
+      aggregate ? (aggregated?.originOf.get(task.id) ?? workspaceId) : workspaceId,
+    [aggregate, aggregated, workspaceId],
+  )
 
   useEffect(() => {
     if (!toast) return
@@ -104,11 +145,42 @@ export function TodoPane({ workspaceId }: TodoPaneProps): ReactElement {
         onOpenSettings={() => setSettingsOpen((v) => !v)}
         settingsOpen={settingsOpen}
       />
+      {isHome && (
+        <div
+          role="group"
+          aria-label="Todo scope"
+          className="flex items-center gap-1 border-b border-border px-3 py-1.5"
+        >
+          {(
+            [
+              ['all', 'Toutes'],
+              ['unfiled', 'Non classé'],
+            ] as const
+          ).map(([value, label]) => {
+            const active = scope === value
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setScope(value)}
+                aria-pressed={active}
+                className={[
+                  'rounded-sm border px-2 py-0.5 text-[11px]',
+                  active ? 'border-border-strong text-fg' : 'border-border text-muted',
+                ].join(' ')}
+              >
+                {label}
+              </button>
+            )
+          })}
+        </div>
+      )}
       <div className="flex-1 overflow-hidden">
         <KanbanBoard
           workspaceId={workspaceId}
           state={sortedState}
           showArchive={showArchive}
+          reorderable={!aggregate}
           filterTask={filterTask}
           onOpenTask={(task) => setEditor({ mode: 'view', taskId: task.id })}
         />
@@ -132,7 +204,7 @@ export function TodoPane({ workspaceId }: TodoPaneProps): ReactElement {
               columns={state.columns}
               onEdit={() => setEditor({ mode: 'edit', task: viewTask })}
               onDelete={async (t) => {
-                await deleteTask(workspaceId, t)
+                await deleteTask(targetFor(t), t)
                 setEditor({ mode: 'closed' })
               }}
               onClose={() => setEditor({ mode: 'closed' })}
@@ -146,11 +218,11 @@ export function TodoPane({ workspaceId }: TodoPaneProps): ReactElement {
           columns={state.columns}
           defaultColumnId={defaultColumnId}
           onSave={async (task) => {
-            if (editor.mode === 'edit') await updateTask(workspaceId, task)
+            if (editor.mode === 'edit') await updateTask(targetFor(task), task)
             else await createTask(workspaceId, task)
           }}
           onDelete={async (task) => {
-            await deleteTask(workspaceId, task)
+            await deleteTask(targetFor(task), task)
           }}
           onClose={() =>
             editor.mode === 'edit'
