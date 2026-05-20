@@ -64,6 +64,7 @@ import { closeSession } from '../lib/closeSession'
 import { computeExpandOnActivate, computeToggleAll } from '../lib/workspaceAccordion'
 import { effectiveCwdLabel, isDeletableWorkspace } from '../lib/homeWorkspace'
 import { subAppRowBgClass } from '../lib/subAppRowStyle'
+import { SUB_APP_ORDER } from './workspaceSubAppOrder'
 import { isHomeWorkspace } from '@shared/workspace'
 import type { Workspace, WorkspaceTreeNode } from '@shared/workspace'
 import type { SubAppId } from '@shared/sub-app'
@@ -125,49 +126,21 @@ function buildWorkspaceTree(
         status: session.state,
       })
     }
+    const tabChildren = supattyChildren.filter(
+      (node): node is Extract<WorkspaceTreeNode, { kind: 'tab' }> => node.kind === 'tab',
+    )
     return {
       kind: 'workspace',
       workspaceId: w.id,
       expanded: expandedIds.has(w.id),
-      children: [
-        {
-          kind: 'sub-app',
-          workspaceId: w.id,
-          subAppId: 'dashboard',
-          expanded: expandedIds.has(subAppKey(w.id, 'dashboard')),
-          children: [],
-        },
-        {
-          kind: 'sub-app',
-          workspaceId: w.id,
-          subAppId: 'explorer',
-          expanded: expandedIds.has(subAppKey(w.id, 'explorer')),
-          children: [],
-        },
-        {
-          kind: 'sub-app',
-          workspaceId: w.id,
-          subAppId: 'supatty',
-          expanded: expandedIds.has(subAppKey(w.id, 'supatty')),
-          children: supattyChildren.filter(
-            (node): node is Extract<WorkspaceTreeNode, { kind: 'tab' }> => node.kind === 'tab',
-          ),
-        },
-        {
-          kind: 'sub-app',
-          workspaceId: w.id,
-          subAppId: 'todo',
-          expanded: expandedIds.has(subAppKey(w.id, 'todo')),
-          children: [],
-        },
-        {
-          kind: 'sub-app',
-          workspaceId: w.id,
-          subAppId: 'notes',
-          expanded: expandedIds.has(subAppKey(w.id, 'notes')),
-          children: [],
-        },
-      ],
+      children: SUB_APP_ORDER.map<Extract<WorkspaceTreeNode, { kind: 'sub-app' }>>((subAppId) => ({
+        kind: 'sub-app',
+        workspaceId: w.id,
+        subAppId,
+        expanded: expandedIds.has(subAppKey(w.id, subAppId)),
+        // Only the SupaTTY row carries leaf tab sessions; the rest are flat.
+        children: subAppId === 'supatty' ? tabChildren : [],
+      })),
     }
   })
 }
