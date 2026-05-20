@@ -136,7 +136,7 @@ export function TaskCard({
       data-task-id={task.id}
       style={style}
       className={[
-        'group/card relative rounded-md border bg-bg-elevated text-fg',
+        'group/card relative select-none rounded-md border bg-bg-elevated text-fg',
         selected
           ? 'border-accent ring-1 ring-accent'
           : 'border-border hover:border-border-strong focus-within:border-accent',

@@ -135,7 +135,7 @@ export function ContextMenu<A extends string>({
       aria-label={ariaLabel}
       onKeyDown={onMenuKeyDown}
       style={{ left: position.left, top: position.top }}
-      className="fixed z-50 min-w-[200px] rounded-md border border-border bg-bg-elevated py-1 shadow-lg outline-none"
+      className="fixed z-50 min-w-[200px] select-none rounded-md border border-border bg-bg-elevated py-1 shadow-lg outline-none"
     >
       <ul className="flex flex-col">
         {items.map((item, index) => (
