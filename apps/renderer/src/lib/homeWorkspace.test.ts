@@ -10,13 +10,18 @@ function ws(over: Partial<Workspace> & Pick<Workspace, 'id' | 'kind'>): Workspac
     workdir: over.workdir ?? null,
     createdAt: 0,
     lastOpenedAt: 0,
+    deletedAt: over.deletedAt ?? null,
     permissions: { extraPaths: [], allow: [], deny: [] },
     ...over,
   }
 }
 
 const home = ws({ id: HOME_WORKSPACE_ID, kind: 'home', rootPath: null })
-const folder = ws({ id: '11111111-1111-4111-8111-111111111111', kind: 'folder', rootPath: '/tmp/proj' })
+const folder = ws({
+  id: '11111111-1111-4111-8111-111111111111',
+  kind: 'folder',
+  rootPath: '/tmp/proj',
+})
 
 describe('isDeletableWorkspace', () => {
   it('pins Home as non-deletable', () => {

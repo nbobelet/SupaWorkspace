@@ -21,6 +21,7 @@ import { registerCmdGuardIpc } from './ipc/cmdGuard'
 import { registerBugReportIpc } from './ipc/bugReport'
 import { registerSettingsIpc } from './ipc/settings'
 import { IpcChannel } from '@shared/ipc'
+import { WORKSPACE_RETENTION_MS } from '@shared/workspace'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -85,7 +86,8 @@ function createWindow(): void {
   })
 
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    const allowed = url.startsWith('http://localhost') || url.startsWith('file://') || url.startsWith('app://')
+    const allowed =
+      url.startsWith('http://localhost') || url.startsWith('file://') || url.startsWith('app://')
     if (!allowed) {
       event.preventDefault()
       void shell.openExternal(url)
@@ -106,13 +108,23 @@ function createWindow(): void {
 void app.whenReady().then(async () => {
   const ptyOk = await runPtySmoke()
   if (!ptyOk) {
-    console.error('[pty] smoke FAILED — node-pty cannot spawn. App will continue but PTY features are broken.')
+    console.error(
+      '[pty] smoke FAILED — node-pty cannot spawn. App will continue but PTY features are broken.',
+    )
   }
 
   const workspaceStore = new WorkspaceStore()
   const notesStore = new NotesStore()
   const supattyStore = new SupaTTYStore({ userDataDir: app.getPath('userData') })
   const todoStore = new TodoStore()
+
+  // Retention sweep: drop trashed workspaces past the 30-day window and cascade
+  // their sub-app data, so expired trash leaves no orphan notes/todo/supatty.
+  for (const purgedId of workspaceStore.purgeExpired(WORKSPACE_RETENTION_MS)) {
+    supattyStore.remove(purgedId)
+    notesStore.remove(purgedId)
+    todoStore.remove(purgedId)
+  }
   const cmdGuardStore = new CmdGuardStore()
   const bugReportStore = new BugReportStore({
     isPackaged: app.isPackaged,
@@ -151,7 +163,14 @@ void app.whenReady().then(async () => {
     onSpawn: (cfg) => notifier.registerSession(cfg),
     onRename: (cfg) => notifier.updateSession(cfg),
   })
-  registerWorkspaceIpc({ workspaceStore, sessionManager, notesStore, supattyStore, todoStore, getMainWindow })
+  registerWorkspaceIpc({
+    workspaceStore,
+    sessionManager,
+    notesStore,
+    supattyStore,
+    todoStore,
+    getMainWindow,
+  })
   registerPermissionsIpc({ workspaceStore, getMainWindow, notifier })
   registerNotesIpc({ notesStore })
   registerTodoIpc({ todoStore })

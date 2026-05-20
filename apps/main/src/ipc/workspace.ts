@@ -5,6 +5,7 @@ import { resolveWithinBase } from '../workspace/validatePath'
 import type { BrowserWindow } from 'electron'
 import { dialog, ipcMain, shell } from 'electron'
 import type {
+  WorkspaceListDeletedResponse,
   WorkspaceListResponse,
   WorkspaceOpenResponse,
   WorkspaceReadClaudeMdResponse,
@@ -13,10 +14,12 @@ import type {
 import {
   ClaudeSettingsSchema,
   IpcChannel,
+  WorkspacePurgeRequest,
   WorkspaceReadClaudeMdRequest,
   WorkspaceReadSettingsRequest,
   WorkspaceRemoveRequest,
   WorkspaceRenameRequest,
+  WorkspaceRestoreRequest,
   WorkspaceRevealRequest,
   WorkspaceSetColorRequest,
   WorkspaceSetWorkdirRequest,
@@ -68,13 +71,34 @@ export function registerWorkspaceIpc(opts: {
 
   ipcMain.handle(IpcChannel.WorkspaceRemove, async (_, raw): Promise<void> => {
     const req = WorkspaceRemoveRequest.parse(raw)
+    // Soft delete: kill live sessions but keep the workspace row AND its
+    // sub-app data (notes/todo/supatty) intact so the trash can recover it.
+    // Permanent cleanup happens in WorkspacePurge / retention sweep only.
     sessionManager.killAllInWorkspace(req.workspaceId)
-    // Drop per-workspace sub-app payloads before the Workspace metadata
-    // disappears, otherwise the entries become orphans nothing references.
+    workspaceStore.softDelete(req.workspaceId)
+  })
+
+  ipcMain.handle(IpcChannel.WorkspaceRestore, async (_, raw): Promise<Workspace> => {
+    const req = WorkspaceRestoreRequest.parse(raw)
+    return workspaceStore.restore(req.workspaceId)
+  })
+
+  ipcMain.handle(
+    IpcChannel.WorkspaceListDeleted,
+    async (): Promise<WorkspaceListDeletedResponse> => {
+      return { workspaces: workspaceStore.listDeleted() }
+    },
+  )
+
+  ipcMain.handle(IpcChannel.WorkspacePurge, async (_, raw): Promise<void> => {
+    const req = WorkspacePurgeRequest.parse(raw)
+    sessionManager.killAllInWorkspace(req.workspaceId)
+    // Permanent delete — drop the sub-app payloads then the metadata, else
+    // the entries become orphans nothing references.
     supattyStore.remove(req.workspaceId)
     notesStore.remove(req.workspaceId)
     todoStore.remove(req.workspaceId)
-    workspaceStore.remove(req.workspaceId)
+    workspaceStore.purge(req.workspaceId)
   })
 
   ipcMain.handle(IpcChannel.WorkspaceSetColor, async (_, raw): Promise<Workspace> => {
@@ -162,6 +186,9 @@ export function registerWorkspaceIpc(opts: {
     ipcMain.removeHandler(IpcChannel.WorkspaceOpen)
     ipcMain.removeHandler(IpcChannel.WorkspaceRename)
     ipcMain.removeHandler(IpcChannel.WorkspaceRemove)
+    ipcMain.removeHandler(IpcChannel.WorkspaceRestore)
+    ipcMain.removeHandler(IpcChannel.WorkspacePurge)
+    ipcMain.removeHandler(IpcChannel.WorkspaceListDeleted)
     ipcMain.removeHandler(IpcChannel.WorkspaceReveal)
     ipcMain.removeHandler(IpcChannel.WorkspaceReadClaudeMd)
     ipcMain.removeHandler(IpcChannel.WorkspaceWriteClaudeMd)

@@ -17,6 +17,9 @@ export const IpcChannel = {
   WorkspaceOpen: 'workspace:open',
   WorkspaceRename: 'workspace:rename',
   WorkspaceRemove: 'workspace:remove',
+  WorkspaceRestore: 'workspace:restore',
+  WorkspacePurge: 'workspace:purge',
+  WorkspaceListDeleted: 'workspace:list-deleted',
   WorkspaceReveal: 'workspace:reveal',
   WorkspaceReadClaudeMd: 'workspace:read-claude-md',
   WorkspaceWriteClaudeMd: 'workspace:write-claude-md',
@@ -150,6 +153,24 @@ export const WorkspaceRemoveRequest = z.object({
   workspaceId: z.string().uuid(),
 })
 export type WorkspaceRemoveRequest = z.infer<typeof WorkspaceRemoveRequest>
+
+/** Move a soft-deleted workspace back to the active list (clears `deletedAt`). */
+export const WorkspaceRestoreRequest = z.object({
+  workspaceId: z.string().uuid(),
+})
+export type WorkspaceRestoreRequest = z.infer<typeof WorkspaceRestoreRequest>
+
+/** Permanent, irreversible delete — drops the workspace AND its sub-app data. */
+export const WorkspacePurgeRequest = z.object({
+  workspaceId: z.string().uuid(),
+})
+export type WorkspacePurgeRequest = z.infer<typeof WorkspacePurgeRequest>
+
+/** Trash listing — soft-deleted workspaces, most-recently-deleted first. */
+export const WorkspaceListDeletedResponse = z.object({
+  workspaces: z.array(Workspace),
+})
+export type WorkspaceListDeletedResponse = z.infer<typeof WorkspaceListDeletedResponse>
 
 export const WorkspaceRevealRequest = z.object({
   workspaceId: z.string().uuid(),

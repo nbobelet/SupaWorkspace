@@ -40,10 +40,18 @@ export const Workspace = z.object({
   workdir: z.string().nullable().default(null),
   createdAt: z.number().int(),
   lastOpenedAt: z.number().int(),
+  // Soft-delete tombstone: epoch ms when the workspace was trashed, or null
+  // when active. Old persisted entries rehydrate to null (active) — no
+  // migration. Sub-app data (notes/todo) is left intact while this is set;
+  // it is only purged on permanent delete or after the retention window.
+  deletedAt: z.number().int().nullable().default(null),
   permissions: WorkspacePermissions,
   color: WorkspaceColor.optional(),
 })
 export type Workspace = z.infer<typeof Workspace>
+
+/** Trash retention window — soft-deleted workspaces auto-purge after 30 days. */
+export const WORKSPACE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 
 /** Deterministic id for the singleton Home workspace (valid uuid v4 shape). */
 export const HOME_WORKSPACE_ID = '00000000-0000-4000-8000-000000000001'
@@ -86,9 +94,5 @@ const WorkspaceNode = z.object({
   children: z.array(z.lazy(() => SubAppNode)),
 })
 
-export const WorkspaceTreeNode = z.discriminatedUnion('kind', [
-  WorkspaceNode,
-  SubAppNode,
-  TabNode,
-])
+export const WorkspaceTreeNode = z.discriminatedUnion('kind', [WorkspaceNode, SubAppNode, TabNode])
 export type WorkspaceTreeNode = z.infer<typeof WorkspaceTreeNode>

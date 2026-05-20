@@ -26,6 +26,7 @@ function makeHomeWorkspace(now: number): Workspace {
     workdir: null,
     createdAt: now,
     lastOpenedAt: now,
+    deletedAt: null,
     permissions: defaultPermissions(),
   }
 }
@@ -49,14 +50,24 @@ export class WorkspaceStore {
     this.store.set('workspaces', [makeHomeWorkspace(Date.now()), ...all])
   }
 
-  /** Home is pinned first; folder workspaces follow, most-recent first. */
+  /**
+   * Active workspaces only (soft-deleted entries excluded). Home is pinned
+   * first; folder workspaces follow, most-recent first.
+   */
   list(): Workspace[] {
-    const all = [...this.store.get('workspaces', [])]
+    const all = [...this.store.get('workspaces', [])].filter((w) => w.deletedAt == null)
     const home = all.filter((w) => w.id === HOME_WORKSPACE_ID)
     const rest = all
       .filter((w) => w.id !== HOME_WORKSPACE_ID)
       .sort((a, b) => b.lastOpenedAt - a.lastOpenedAt)
     return [...home, ...rest]
+  }
+
+  /** Soft-deleted workspaces (the trash), most-recently-deleted first. */
+  listDeleted(): Workspace[] {
+    return [...this.store.get('workspaces', [])]
+      .filter((w): w is Workspace & { deletedAt: number } => w.deletedAt != null)
+      .sort((a, b) => b.deletedAt - a.deletedAt)
   }
 
   getById(id: string): Workspace | undefined {
@@ -74,7 +85,9 @@ export class WorkspaceStore {
     const existing = this.getByPath(rootPath)
     const now = Date.now()
     if (existing) {
-      const updated = { ...existing, lastOpenedAt: now }
+      // Re-opening a trashed folder restores it (clears the tombstone) — this
+      // is the "recover via Open Workspace" path; the retention timer resets.
+      const updated = { ...existing, lastOpenedAt: now, deletedAt: null }
       this.replace(updated)
       return { workspace: updated, wasExisting: true }
     }
@@ -90,6 +103,7 @@ export class WorkspaceStore {
       workdir: null,
       createdAt: now,
       lastOpenedAt: now,
+      deletedAt: null,
       permissions: defaultPermissions(),
       color: { hue: pickWorkspaceHue(existingHues) },
     }
@@ -122,11 +136,51 @@ export class WorkspaceStore {
     return updated
   }
 
-  /** Home is permanent — removal requests for it are ignored. */
-  remove(id: string): void {
+  /**
+   * Soft delete — tombstones the workspace so it leaves the active list but
+   * keeps its row (and all sub-app data) for recovery. Home is permanent, so
+   * requests for it are ignored. Idempotent: re-trashing keeps the first
+   * `deletedAt` so the retention countdown is not extended by repeat calls.
+   */
+  softDelete(id: string): void {
+    if (id === HOME_WORKSPACE_ID) return
+    const ws = this.getById(id)
+    if (!ws || ws.deletedAt != null) return
+    this.replace({ ...ws, deletedAt: Date.now() })
+  }
+
+  /** Restore a trashed workspace to the active list; resets the timer. */
+  restore(id: string): Workspace {
+    const ws = this.getById(id)
+    if (!ws) throw new Error(`Workspace not found: ${id}`)
+    const updated: Workspace = { ...ws, deletedAt: null, lastOpenedAt: Date.now() }
+    this.replace(updated)
+    return updated
+  }
+
+  /** Permanent, irreversible delete. Home is permanent — requests are ignored. */
+  purge(id: string): void {
     if (id === HOME_WORKSPACE_ID) return
     const next = this.store.get('workspaces', []).filter((w) => w.id !== id)
     this.store.set('workspaces', next)
+  }
+
+  /**
+   * Drop soft-deleted workspaces older than `maxAgeMs`. Returns the purged ids
+   * so the caller can cascade sub-app cleanup (notes/todo/supatty) — this store
+   * owns only workspace metadata. Run once on boot.
+   */
+  purgeExpired(maxAgeMs: number): string[] {
+    const now = Date.now()
+    const all = this.store.get('workspaces', [])
+    const expired = all.filter((w) => w.deletedAt != null && w.deletedAt + maxAgeMs < now)
+    if (expired.length === 0) return []
+    const expiredIds = new Set(expired.map((w) => w.id))
+    this.store.set(
+      'workspaces',
+      all.filter((w) => !expiredIds.has(w.id)),
+    )
+    return [...expiredIds]
   }
 
   findGrantConflicts(): Array<{
