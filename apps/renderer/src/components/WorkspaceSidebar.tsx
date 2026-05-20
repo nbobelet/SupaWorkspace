@@ -15,6 +15,7 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   FolderPlus,
+  FolderTree,
   Home as HomeIcon,
   LayoutDashboard,
   ListTodo,
@@ -134,6 +135,13 @@ function buildWorkspaceTree(
           workspaceId: w.id,
           subAppId: 'dashboard',
           expanded: expandedIds.has(subAppKey(w.id, 'dashboard')),
+          children: [],
+        },
+        {
+          kind: 'sub-app',
+          workspaceId: w.id,
+          subAppId: 'explorer',
+          expanded: expandedIds.has(subAppKey(w.id, 'explorer')),
           children: [],
         },
         {
@@ -268,7 +276,13 @@ export function WorkspaceSidebar(): ReactElement {
       if (colon !== -1) {
         const wsId = id.slice(0, colon)
         const saId = id.slice(colon + 1)
-        if (saId === 'supatty' || saId === 'notes' || saId === 'todo' || saId === 'dashboard') {
+        if (
+          saId === 'supatty' ||
+          saId === 'notes' ||
+          saId === 'todo' ||
+          saId === 'dashboard' ||
+          saId === 'explorer'
+        ) {
           toggleSubAppExpandedStore(wsId, saId)
         }
         return
@@ -508,6 +522,11 @@ export function WorkspaceSidebar(): ReactElement {
                     setActiveWorkspace(workspaceId)
                     expandOnActivate(workspaceId)
                   }}
+                  onActivateExplorer={(workspaceId) => {
+                    setActiveSubApp(workspaceId, 'explorer')
+                    setActiveWorkspace(workspaceId)
+                    expandOnActivate(workspaceId)
+                  }}
                   onActivateSupatty={activateSupatty}
                   onQuickSpawn={(workspaceId) => void quickSpawn(workspaceId)}
                   onOpenNotes={(workspaceId) =>
@@ -586,6 +605,7 @@ interface WorkspaceTileProps {
   onRenameCommit: (id: string) => void | Promise<void>
   onRenameCancel: () => void
   onActivateDashboard: (workspaceId: string) => void
+  onActivateExplorer: (workspaceId: string) => void
   onActivateSupatty: (workspaceId: string) => void
   onQuickSpawn: (workspaceId: string) => void
   onOpenNotes: (workspaceId: string) => void
@@ -614,6 +634,7 @@ function WorkspaceTile({
   onRenameCommit,
   onRenameCancel,
   onActivateDashboard,
+  onActivateExplorer,
   onActivateSupatty,
   onQuickSpawn,
   onOpenNotes,
@@ -797,9 +818,11 @@ function WorkspaceTile({
                     ? () => onActivateTodo(w.id)
                     : subAppNode.subAppId === 'dashboard'
                       ? () => onActivateDashboard(w.id)
-                      : subAppNode.subAppId === 'supatty'
-                        ? () => onActivateSupatty(w.id)
-                        : undefined
+                      : subAppNode.subAppId === 'explorer'
+                        ? () => onActivateExplorer(w.id)
+                        : subAppNode.subAppId === 'supatty'
+                          ? () => onActivateSupatty(w.id)
+                          : undefined
               }
               onQuickSpawn={
                 subAppNode.subAppId === 'supatty' ? () => onQuickSpawn(w.id) : undefined
@@ -849,6 +872,7 @@ const SUB_APP_LABEL: Record<SubAppId, string> = {
   notes: 'Notes',
   todo: 'TODO',
   dashboard: 'Dashboard',
+  explorer: 'Explorer',
 }
 
 function SubAppRow({
@@ -938,6 +962,8 @@ function SubAppRow({
               <ListTodo size={12} aria-hidden="true" />
             ) : subAppId === 'dashboard' ? (
               <LayoutDashboard size={12} aria-hidden="true" />
+            ) : subAppId === 'explorer' ? (
+              <FolderTree size={12} aria-hidden="true" />
             ) : (
               <StickyNote size={12} aria-hidden="true" />
             )}

@@ -29,6 +29,8 @@ const SUBAPP_EXPANDED_DEFAULT: Record<SubAppId, boolean> = {
   // Dashboard is a leaf view (no expandable children) — collapsed flag is inert
   // but the Record must stay exhaustive over SubAppId.
   dashboard: false,
+  // Explorer is a full-pane view like dashboard — no expandable children.
+  explorer: false,
 }
 
 export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({

@@ -49,6 +49,9 @@ export const IpcChannel = {
   TodoDeleteTask: 'todo:delete-task',
   TodoReorder: 'todo:reorder',
   TodoSetColumns: 'todo:set-columns',
+  ExplorerListDir: 'explorer:list-dir',
+  ExplorerOpen: 'explorer:open',
+  ExplorerReveal: 'explorer:reveal',
 } as const
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel]
 
@@ -383,3 +386,75 @@ export const TodoStateResponse = z.object({
   state: TodoState,
 })
 export type TodoStateResponse = z.infer<typeof TodoStateResponse>
+
+/**
+ * Per-file working-tree state, derived from `git status --porcelain=v2`.
+ * `clean` is implicit (absent `gitStatus`). The renderer maps these onto
+ * decorations (color dot / letter) in the Miller column. Mirrors the subset
+ * of porcelain XY codes the Explorer cares about; anything else collapses to
+ * `modified` so an unknown future state still renders as "dirty".
+ */
+export const FileGitStatus = z.enum([
+  'modified',
+  'added',
+  'deleted',
+  'renamed',
+  'untracked',
+  'ignored',
+  'conflicted',
+])
+export type FileGitStatus = z.infer<typeof FileGitStatus>
+
+export const FileEntry = z.object({
+  name: z.string(),
+  /** Absolute path on disk (already clamped to the workspace scope by main). */
+  path: z.string(),
+  type: z.enum(['file', 'dir']),
+  gitStatus: FileGitStatus.optional(),
+  /** Byte size for files; 0 for directories (no recursive sizing). */
+  size: z.number().int().min(0),
+})
+export type FileEntry = z.infer<typeof FileEntry>
+
+export const ExplorerListDirRequest = z.object({
+  workspaceId: z.string().uuid(),
+  /** Directory relative to the workspace rootPath. Empty string = root. */
+  relPath: z.string(),
+})
+export type ExplorerListDirRequest = z.infer<typeof ExplorerListDirRequest>
+
+/**
+ * `status: 'ok'` carries one directory level of entries. `status:
+ * 'needs-grant'` signals the requested path resolves outside the workspace
+ * scope — the renderer routes the user through the PathGrant flow
+ * (`window.ws.permissions.requestPath`) rather than treating it as an error.
+ */
+export const ExplorerListDirResponse = z.discriminatedUnion('status', [
+  z.object({
+    status: z.literal('ok'),
+    relPath: z.string(),
+    entries: z.array(FileEntry),
+  }),
+  z.object({
+    status: z.literal('needs-grant'),
+    path: z.string(),
+  }),
+])
+export type ExplorerListDirResponse = z.infer<typeof ExplorerListDirResponse>
+
+export const ExplorerOpenRequest = z.object({
+  workspaceId: z.string().uuid(),
+  relPath: z.string(),
+})
+export type ExplorerOpenRequest = z.infer<typeof ExplorerOpenRequest>
+
+export const ExplorerOpenResponse = z.object({
+  opened: z.boolean(),
+})
+export type ExplorerOpenResponse = z.infer<typeof ExplorerOpenResponse>
+
+export const ExplorerRevealRequest = z.object({
+  workspaceId: z.string().uuid(),
+  relPath: z.string(),
+})
+export type ExplorerRevealRequest = z.infer<typeof ExplorerRevealRequest>

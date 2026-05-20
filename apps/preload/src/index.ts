@@ -32,6 +32,8 @@ import type {
   ClaudeSettings,
   Settings,
   SettingsUpdatePayload,
+  ExplorerListDirResponse,
+  ExplorerOpenResponse,
 } from '@shared/ipc'
 import type { SessionSnapshotListResponse, SessionSnapshotClearResponse } from '@shared/snapshot'
 import type {
@@ -162,6 +164,14 @@ const api = {
     get: (): Promise<Settings> => ipcRenderer.invoke(IpcChannel.SettingsGet),
     update: (payload: SettingsUpdatePayload): Promise<Settings> =>
       ipcRenderer.invoke(IpcChannel.SettingsUpdate, payload),
+  },
+  explorer: {
+    listDir: (workspaceId: string, relPath: string): Promise<ExplorerListDirResponse> =>
+      ipcRenderer.invoke(IpcChannel.ExplorerListDir, { workspaceId, relPath }),
+    open: (workspaceId: string, relPath: string): Promise<ExplorerOpenResponse> =>
+      ipcRenderer.invoke(IpcChannel.ExplorerOpen, { workspaceId, relPath }),
+    reveal: (workspaceId: string, relPath: string): Promise<void> =>
+      ipcRenderer.invoke(IpcChannel.ExplorerReveal, { workspaceId, relPath }),
   },
 }
 
