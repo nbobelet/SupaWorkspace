@@ -3,6 +3,7 @@ import { FolderTree, ShieldAlert } from 'lucide-react'
 import type { FileEntry } from '@shared/ipc'
 import { MillerColumns } from './MillerColumns'
 import { ExplorerContextMenu } from './ContextMenu'
+import { ExplorerSearchBar } from './ExplorerSearchBar'
 import { useExplorer } from './useExplorer'
 
 interface ContextMenuState {
@@ -44,12 +45,20 @@ export function ExplorerPane({ workspaceId }: ExplorerPaneProps): ReactElement {
     void explorer.resolveGrant()
   }, [explorer])
 
+  const onReveal = useCallback(
+    (relPath: string) => {
+      void explorer.reveal(relPath)
+    },
+    [explorer],
+  )
+
   return (
     <div className="flex h-full flex-col bg-bg text-fg">
       <header className="flex items-center gap-2 border-b border-border bg-bg-sunken px-4 py-2">
         <FolderTree size={16} className="text-accent" aria-hidden="true" />
         <h1 className="text-sm font-semibold tracking-tight">Explorer</h1>
         <span className="ml-1 text-xs text-muted">Miller columns</span>
+        <ExplorerSearchBar workspaceId={workspaceId} onReveal={onReveal} />
       </header>
 
       {explorer.grantPrompt && (

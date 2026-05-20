@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ExplorerListDirResponse, FileEntry } from '@shared/ipc'
 import {
+  buildRevealColumns,
   descend,
   fillColumn,
   joinRel,
@@ -87,6 +88,24 @@ describe('explorer pure transitions', () => {
     const next = fillColumn(state, 0, [entry('a.ts', 'file')])
     expect(next.columns[0]).toMatchObject({ loading: false })
     expect(next.columns[0]?.entries).toHaveLength(1)
+  })
+
+  it('buildRevealColumns selects the segment owning each level down to the leaf', () => {
+    const listed = [
+      { relPath: '', entries: [entry('docs', 'dir'), entry('src', 'dir')] },
+      { relPath: 'src', entries: [entry('lib', 'dir'), entry('index.ts', 'file')] },
+    ]
+    const columns = buildRevealColumns(['src', 'index.ts'], listed)
+    expect(columns).toHaveLength(2)
+    expect(columns[0]?.selectedIndex).toBe(1) // 'src'
+    expect(columns[1]?.selectedIndex).toBe(1) // 'index.ts'
+    expect(metadataTarget(columns)?.name).toBe('index.ts')
+  })
+
+  it('buildRevealColumns stops at a vanished segment instead of throwing', () => {
+    const listed = [{ relPath: '', entries: [entry('src', 'dir')] }]
+    const columns = buildRevealColumns(['nope', 'gone.ts'], listed)
+    expect(columns).toHaveLength(0)
   })
 })
 
@@ -227,6 +246,37 @@ describe('useExplorer (async flow)', () => {
     })
     expect(h.current().grantPrompt).toBeNull()
     expect(h.current().columns[0]?.entries[0]?.name).toBe('granted.ts')
+    act(() => h.root.unmount())
+  })
+
+  it('reveal expands the column stack down to the target file and previews it', async () => {
+    ws.listDir.mockImplementation((_w: string, relPath: string) => {
+      if (relPath === '') {
+        return Promise.resolve({
+          status: 'ok',
+          relPath: '',
+          entries: [entry('readme.md', 'file'), entry('src', 'dir')],
+        })
+      }
+      if (relPath === 'src') {
+        return Promise.resolve({
+          status: 'ok',
+          relPath: 'src',
+          entries: [entry('a.ts', 'file'), entry('b.ts', 'file')],
+        })
+      }
+      return Promise.resolve({ status: 'ok', relPath, entries: [] })
+    })
+    const h = renderHook()
+    await flush()
+    await act(async () => {
+      await h.current().reveal('src/b.ts')
+    })
+    await flush()
+    expect(h.current().columns).toHaveLength(2)
+    expect(h.current().columns[1]?.relPath).toBe('src')
+    expect(h.current().metadata?.name).toBe('b.ts')
+    expect(ws.readFile).toHaveBeenCalledWith(WORKSPACE, 'src/b.ts', false)
     act(() => h.root.unmount())
   })
 

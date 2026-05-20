@@ -152,7 +152,7 @@ function byDirThenName(a: FileEntry, b: FileEntry): number {
  * `git check-ignore -z` is only valid WITH `--stdin` (it rejects `-z` for argv
  * paths), so this path must use the stdin form — hence spawn, not execFile.
  */
-async function checkIgnored(cwd: string, paths: string[]): Promise<Set<string>> {
+export async function checkIgnored(cwd: string, paths: string[]): Promise<Set<string>> {
   if (paths.length === 0) return new Set()
   const stdout = await new Promise<string>((resolveOut) => {
     const child = spawn('git', ['check-ignore', '--stdin', '-z'], { cwd })

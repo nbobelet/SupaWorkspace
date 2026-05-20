@@ -53,6 +53,8 @@ export const IpcChannel = {
   ExplorerOpen: 'explorer:open',
   ExplorerReveal: 'explorer:reveal',
   ExplorerReadFile: 'explorer:read-file',
+  ExplorerSearch: 'explorer:search',
+  ExplorerSearchCancel: 'explorer:search-cancel',
 } as const
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel]
 
@@ -504,3 +506,63 @@ export const ExplorerReadFileResponse = z.discriminatedUnion('status', [
   }),
 ])
 export type ExplorerReadFileResponse = z.infer<typeof ExplorerReadFileResponse>
+
+export const ExplorerSearchRequest = z.object({
+  workspaceId: z.string().uuid(),
+  /** Raw user query. Matching/ranking happens renderer-side; main only walks
+   * the tree and returns capped candidates (one canonical fuzzy matcher). */
+  query: z.string(),
+  /** Monotonic per-renderer search id. `invoke` cannot carry an AbortSignal
+   * across the process boundary, so the renderer tags each search with an id
+   * and cancels the in-flight walk via `ExplorerSearchCancel(workspaceId, id)`.
+   */
+  searchId: z.number().int().min(0),
+})
+export type ExplorerSearchRequest = z.infer<typeof ExplorerSearchRequest>
+
+/**
+ * Cancel an in-flight search walk. Fire-and-forget from the renderer: main sets
+ * an aborted flag the recursive `walk` checks each iteration and bails early,
+ * so fast typing never piles up concurrent full-tree walks. A `searchId` that
+ * doesn't match the live walk is a no-op.
+ */
+export const ExplorerSearchCancelRequest = z.object({
+  workspaceId: z.string().uuid(),
+  searchId: z.number().int().min(0),
+})
+export type ExplorerSearchCancelRequest = z.infer<typeof ExplorerSearchCancelRequest>
+
+/**
+ * One file-search candidate. `relPath` is workspace-relative POSIX (the same
+ * shape `listDir`/`reveal` consume), so a hit can be fed straight back into the
+ * reveal flow without re-deriving paths from OS-specific absolutes.
+ */
+export const SearchHit = z.object({
+  relPath: z.string(),
+  name: z.string(),
+  type: z.enum(['file', 'dir']),
+})
+export type SearchHit = z.infer<typeof SearchHit>
+
+/**
+ * `status: 'ok'` carries the capped candidate list (`truncated` flags the walk
+ * hit its entry/depth budget). `needs-grant` mirrors the other explorer
+ * channels: a workspace with a null rootPath (Home) can't be walked.
+ * `cancelled` signals the walk was aborted by a newer search before completing
+ * — the renderer must ignore it rather than treat the empty result as "no hits".
+ */
+export const ExplorerSearchResponse = z.discriminatedUnion('status', [
+  z.object({
+    status: z.literal('ok'),
+    hits: z.array(SearchHit),
+    truncated: z.boolean(),
+  }),
+  z.object({
+    status: z.literal('needs-grant'),
+    path: z.string(),
+  }),
+  z.object({
+    status: z.literal('cancelled'),
+  }),
+])
+export type ExplorerSearchResponse = z.infer<typeof ExplorerSearchResponse>

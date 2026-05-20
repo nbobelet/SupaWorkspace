@@ -106,6 +106,34 @@ export function fillColumn(
   return { ...state, columns }
 }
 
+/**
+ * Pure column-stack builder for "reveal a path". `segments` are the POSIX parts
+ * of the target relPath (`a/b/c.ts` -> `['a','b','c.ts']`); `listed[i]` is the
+ * directory listing that CONTAINS `segments[i]` (so `listed[0]` is the root,
+ * `listed[i]` is the dir at the depth where `segments[i]` lives). Produces one
+ * column per resolved level, each pre-selected on the segment that owns the next
+ * one, so `metadataTarget` lands on the leaf file and the preview follows for
+ * free. Stops early (returning the prefix built so far) if a segment has
+ * vanished from its listing — a stale path reveals as far as it still resolves
+ * rather than throwing.
+ */
+export function buildRevealColumns(
+  segments: string[],
+  listed: { relPath: string; entries: FileEntry[] }[],
+): ExplorerColumn[] {
+  const columns: ExplorerColumn[] = []
+  const depth = Math.min(segments.length, listed.length)
+  for (let i = 0; i < depth; i += 1) {
+    const level = listed[i]
+    const segment = segments[i]
+    if (!level || segment === undefined) break
+    const selectedIndex = level.entries.findIndex((e) => e.name === segment)
+    if (selectedIndex === -1) break
+    columns.push({ relPath: level.relPath, entries: level.entries, selectedIndex, loading: false })
+  }
+  return columns
+}
+
 const ROOT_COLUMN: ExplorerColumn = {
   relPath: '',
   entries: [],
@@ -144,6 +172,9 @@ export interface ExplorerApi {
   activate: (columnIndex: number, entryIndex: number) => void
   /** Open a file in the OS / configured editor (Enter on a file row). */
   openFile: (entry: FileEntry) => Promise<void>
+  /** Expand the column stack down to `relPath` and select it (search reveal).
+   * The preview follows automatically via `metadataTarget`. */
+  reveal: (relPath: string) => Promise<void>
   /** Request the pending grant, then re-list the blocked column on success. */
   resolveGrant: () => Promise<void>
   /** Dismiss the grant prompt without requesting access. */
@@ -267,6 +298,44 @@ export function useExplorer(workspaceId: string): ExplorerApi {
     [state.columns, workspaceId],
   )
 
+  const reveal = useCallback(
+    async (relPath: string): Promise<void> => {
+      const segments = relPath.split('/').filter((s) => s.length > 0)
+      if (segments.length === 0) return
+
+      // Walk one directory level per segment: listed[i] is the dir CONTAINING
+      // segments[i]. The leaf is never listed (it may be a file); its parent is
+      // the last level we fetch. A needs-grant mid-walk surfaces the prompt and
+      // stops, matching the lazy-expansion behaviour.
+      const listed: { relPath: string; entries: FileEntry[] }[] = []
+      let dirRel = ''
+      for (let i = 0; i < segments.length; i += 1) {
+        const segment = segments[i]
+        if (segment === undefined) break
+        let res: ExplorerListDirResponse
+        try {
+          res = await window.ws.explorer.listDir(workspaceId, dirRel)
+        } catch {
+          return
+        }
+        if (res.status === 'needs-grant') {
+          setState((prev) => ({
+            ...prev,
+            grantPrompt: { path: res.path, forColumnAfter: listed.length - 1, relPath: dirRel },
+          }))
+          return
+        }
+        listed.push({ relPath: dirRel, entries: res.entries })
+        dirRel = joinRel(dirRel, segment)
+      }
+
+      const columns = buildRevealColumns(segments, listed)
+      if (columns.length === 0) return
+      setState({ columns, grantPrompt: null })
+    },
+    [workspaceId],
+  )
+
   const resolveGrant = useCallback(async (): Promise<void> => {
     const prompt = state.grantPrompt
     if (!prompt) return
@@ -301,6 +370,7 @@ export function useExplorer(workspaceId: string): ExplorerApi {
     select,
     activate,
     openFile,
+    reveal,
     resolveGrant,
     dismissGrant,
   }
