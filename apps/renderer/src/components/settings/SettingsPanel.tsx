@@ -24,7 +24,9 @@ export function SettingsPanel({ workspaceId, onClose }: SettingsPanelProps): Rea
   return (
     <aside className="flex w-[28rem] flex-col border-l border-border bg-bg-sunken">
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted">Settings</span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted">
+          Workspace Settings
+        </span>
         <button
           type="button"
           onClick={onClose}
@@ -34,7 +36,11 @@ export function SettingsPanel({ workspaceId, onClose }: SettingsPanelProps): Rea
         </button>
       </div>
 
-      <nav role="tablist" aria-label="Settings sections" className="flex border-b border-border bg-bg-sunken">
+      <nav
+        role="tablist"
+        aria-label="Settings sections"
+        className="flex border-b border-border bg-bg-sunken"
+      >
         {TABS.map((t) => {
           const isActive = t.id === tab
           return (
@@ -46,7 +52,9 @@ export function SettingsPanel({ workspaceId, onClose }: SettingsPanelProps): Rea
               onClick={() => setTab(t.id)}
               className={[
                 'flex-1 border-b-2 px-3 py-2 text-xs',
-                isActive ? 'border-accent text-fg' : 'border-transparent text-muted hover:text-fg-subtle',
+                isActive
+                  ? 'border-accent text-fg'
+                  : 'border-transparent text-muted hover:text-fg-subtle',
               ].join(' ')}
             >
               {t.label}
