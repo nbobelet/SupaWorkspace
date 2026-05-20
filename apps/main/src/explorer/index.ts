@@ -5,14 +5,18 @@ import {
   ExplorerOpenRequest,
   ExplorerReadFileRequest,
   ExplorerRevealRequest,
+  ExplorerSearchCancelRequest,
+  ExplorerSearchRequest,
   IpcChannel,
   type ExplorerListDirResponse,
   type ExplorerOpenResponse,
   type ExplorerReadFileResponse,
+  type ExplorerSearchResponse,
 } from '@shared/ipc'
 import type { WorkspaceStore } from '../workspace/WorkspaceStore'
 import { listDir } from './list-dir'
 import { readFile } from './read-file'
+import { cancelSearch, search } from './search'
 import { openPath, revealInFileManager } from './shell-actions'
 
 /**
@@ -69,6 +73,30 @@ export function registerExplorerIpc(opts: { workspaceStore: WorkspaceStore }): (
     return readFile(ws.rootPath, req.relPath, req.full ?? false)
   })
 
+  ipcMain.handle(IpcChannel.ExplorerSearch, async (_, raw): Promise<ExplorerSearchResponse> => {
+    const req = ExplorerSearchRequest.parse(raw)
+    const ws = workspaceStore.getById(req.workspaceId)
+    if (!ws) throw new Error(`Unknown workspace: ${req.workspaceId}`)
+    // Home (null rootPath) carries no scope to walk — same PathGrant contract
+    // as the other explorer channels rather than an empty-but-ok result.
+    if (!ws.rootPath) return { status: 'needs-grant', path: '' }
+    const startedAt = Date.now()
+    const result = await search(req.workspaceId, ws.rootPath, req.searchId)
+    if (result.status === 'cancelled') {
+      console.log(`[explorer] search "${req.query}" cancelled (id ${req.searchId})`)
+      return { status: 'cancelled' }
+    }
+    console.log(
+      `[explorer] search "${req.query}" -> ${result.hits.length} hits in ${Date.now() - startedAt}ms`,
+    )
+    return { status: 'ok', hits: result.hits, truncated: result.truncated }
+  })
+
+  ipcMain.handle(IpcChannel.ExplorerSearchCancel, async (_, raw): Promise<void> => {
+    const req = ExplorerSearchCancelRequest.parse(raw)
+    cancelSearch(req.workspaceId, req.searchId)
+  })
+
   ipcMain.handle(IpcChannel.ExplorerReveal, async (_, raw): Promise<void> => {
     const req = ExplorerRevealRequest.parse(raw)
     const ws = workspaceStore.getById(req.workspaceId)
@@ -84,5 +112,7 @@ export function registerExplorerIpc(opts: { workspaceStore: WorkspaceStore }): (
     ipcMain.removeHandler(IpcChannel.ExplorerOpen)
     ipcMain.removeHandler(IpcChannel.ExplorerReadFile)
     ipcMain.removeHandler(IpcChannel.ExplorerReveal)
+    ipcMain.removeHandler(IpcChannel.ExplorerSearch)
+    ipcMain.removeHandler(IpcChannel.ExplorerSearchCancel)
   }
 }
