@@ -20,6 +20,7 @@ function makeWorkspace(
     workdir: null,
     createdAt: 0,
     lastOpenedAt: 0,
+    deletedAt: null,
     permissions: {
       extraPaths: extraPaths.map((g) => ({ ...g, grantedAt: 0 })),
       allow: [],

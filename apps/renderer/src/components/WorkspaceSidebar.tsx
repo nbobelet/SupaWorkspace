@@ -21,6 +21,7 @@ import {
   Plus,
   StickyNote,
   Terminal,
+  Trash2,
   X,
 } from 'lucide-react'
 import {
@@ -53,6 +54,7 @@ import { useActiveSubApp } from '../state/workspaceStore'
 import { withViewTransition } from '../lib/viewTransition'
 import { clampMenuPosition, VIEWPORT_MARGIN } from '../lib/menuPosition'
 import { NotesOverlay } from './NotesOverlay'
+import { WorkspaceTrashPanel } from './WorkspaceTrashPanel'
 import { WorkspaceSettingsMenu } from './WorkspaceSettingsMenu'
 import { StatusIcon } from './StatusIcon'
 import { TerminalTypeIcon } from './TerminalTypeIcon'
@@ -189,6 +191,7 @@ export function WorkspaceSidebar(): ReactElement {
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   const [settingsOpenFor, setSettingsOpenFor] = useState<string | null>(null)
   const [notesOverlayFor, setNotesOverlayFor] = useState<string | null>(null)
+  const [trashOpen, setTrashOpen] = useState(false)
   const setColor = useWorkspaceStore((s) => s.setColor)
   const setWorkdir = useWorkspaceStore((s) => s.setWorkdir)
 
@@ -455,6 +458,15 @@ export function WorkspaceSidebar(): ReactElement {
           )}
           <button
             type="button"
+            onClick={() => setTrashOpen(true)}
+            title="Recently deleted"
+            aria-label="Recently deleted workspaces"
+            className="inline-flex items-center rounded-sm border border-border bg-bg-elevated p-1 hover:border-border-strong"
+          >
+            <Trash2 size={14} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
             onClick={openWorkspace}
             title="Open workspace"
             aria-label="Open workspace"
@@ -546,6 +558,15 @@ export function WorkspaceSidebar(): ReactElement {
       )}
       {notesOverlayFor && (
         <NotesOverlay workspaceId={notesOverlayFor} onClose={() => setNotesOverlayFor(null)} />
+      )}
+      {trashOpen && (
+        <WorkspaceTrashPanel
+          onClose={() => setTrashOpen(false)}
+          onRestored={(ws) => {
+            upsertWorkspace(ws)
+            setActiveWorkspace(ws.id)
+          }}
+        />
       )}
     </aside>
   )

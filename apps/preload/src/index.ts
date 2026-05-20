@@ -24,6 +24,7 @@ import type {
   TodoSetColumnsRequest,
   TodoStateResponse,
   TodoUpdateTaskRequest,
+  WorkspaceListDeletedResponse,
   WorkspaceListResponse,
   WorkspaceOpenResponse,
   WorkspaceReadClaudeMdResponse,
@@ -61,9 +62,12 @@ const api = {
   session: {
     spawn: (req: SessionSpawnRequest): Promise<SessionSpawnResponse> =>
       ipcRenderer.invoke(IpcChannel.SessionSpawn, req),
-    write: (req: SessionWriteRequest): Promise<void> => ipcRenderer.invoke(IpcChannel.SessionWrite, req),
-    resize: (req: SessionResizeRequest): Promise<void> => ipcRenderer.invoke(IpcChannel.SessionResize, req),
-    kill: (req: SessionKillRequest): Promise<void> => ipcRenderer.invoke(IpcChannel.SessionKill, req),
+    write: (req: SessionWriteRequest): Promise<void> =>
+      ipcRenderer.invoke(IpcChannel.SessionWrite, req),
+    resize: (req: SessionResizeRequest): Promise<void> =>
+      ipcRenderer.invoke(IpcChannel.SessionResize, req),
+    kill: (req: SessionKillRequest): Promise<void> =>
+      ipcRenderer.invoke(IpcChannel.SessionKill, req),
     rename: (req: SessionRenameRequest): Promise<SessionRenameResponse> =>
       ipcRenderer.invoke(IpcChannel.SessionRename, req),
     onData: (listener: (event: SessionDataEvent) => void): Unsubscribe =>
@@ -82,6 +86,12 @@ const api = {
       ipcRenderer.invoke(IpcChannel.WorkspaceRename, { workspaceId, name }),
     remove: (workspaceId: string): Promise<void> =>
       ipcRenderer.invoke(IpcChannel.WorkspaceRemove, { workspaceId }),
+    restore: (workspaceId: string): Promise<Workspace> =>
+      ipcRenderer.invoke(IpcChannel.WorkspaceRestore, { workspaceId }),
+    purge: (workspaceId: string): Promise<void> =>
+      ipcRenderer.invoke(IpcChannel.WorkspacePurge, { workspaceId }),
+    listDeleted: (): Promise<WorkspaceListDeletedResponse> =>
+      ipcRenderer.invoke(IpcChannel.WorkspaceListDeleted),
     reveal: (workspaceId: string): Promise<void> =>
       ipcRenderer.invoke(IpcChannel.WorkspaceReveal, { workspaceId }),
     readClaudeMd: (workspaceId: string): Promise<WorkspaceReadClaudeMdResponse> =>
