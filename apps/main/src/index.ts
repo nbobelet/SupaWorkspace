@@ -20,6 +20,7 @@ import { registerSessionSnapshotIpc } from './ipc/sessionSnapshot'
 import { registerCmdGuardIpc } from './ipc/cmdGuard'
 import { registerBugReportIpc } from './ipc/bugReport'
 import { registerSettingsIpc } from './ipc/settings'
+import { registerExplorerIpc } from './explorer'
 import { IpcChannel } from '@shared/ipc'
 import { WORKSPACE_RETENTION_MS } from '@shared/workspace'
 
@@ -178,6 +179,7 @@ void app.whenReady().then(async () => {
   registerCmdGuardIpc({ cmdGuardStore })
   registerBugReportIpc({ bugReportStore })
   registerSettingsIpc({ settingsStore })
+  registerExplorerIpc({ workspaceStore })
 
   createWindow()
 
