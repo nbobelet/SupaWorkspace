@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeToggleAll } from './workspaceAccordion'
+import { computeExpandOnActivate, computeToggleAll } from './workspaceAccordion'
 
 describe('computeToggleAll', () => {
   it('flips to all-expanded when at least one workspace is collapsed', () => {
@@ -44,5 +44,38 @@ describe('computeToggleAll', () => {
     const result = computeToggleAll([], new Set(['w1']))
     expect(result.allExpanded).toBe(false)
     expect(result.next.size).toBe(0)
+  })
+})
+
+describe('computeExpandOnActivate', () => {
+  // Regression: activating a workspace must NOT collapse the others. The old
+  // exclusive-accordion behavior wiped every sibling workspace id from the
+  // Set, so only the clicked workspace stayed open. Multiple sections may now
+  // be expanded at once.
+  it('keeps sibling workspaces expanded when activating one', () => {
+    const next = computeExpandOnActivate('w2', new Set(['w1', 'w2']))
+    expect(next.has('w1')).toBe(true)
+    expect(next.has('w2')).toBe(true)
+  })
+
+  it('expands the activated workspace when it was collapsed', () => {
+    const next = computeExpandOnActivate('w2', new Set(['w1']))
+    expect([...next].sort()).toEqual(['w1', 'w2'])
+  })
+
+  // Sub-app keys (`wsId:subAppId`) live in a separate namespace and must be
+  // preserved untouched across an activate.
+  it('preserves sub-app keys', () => {
+    const next = computeExpandOnActivate('w2', new Set(['w1', 'w1:supatty', 'w2:todo']))
+    expect(next.has('w1:supatty')).toBe(true)
+    expect(next.has('w2:todo')).toBe(true)
+    expect(next.has('w1')).toBe(true)
+    expect(next.has('w2')).toBe(true)
+  })
+
+  it('is idempotent when the workspace is already expanded', () => {
+    const prev = new Set(['w1', 'w2'])
+    const next = computeExpandOnActivate('w2', prev)
+    expect([...next].sort()).toEqual(['w1', 'w2'])
   })
 })

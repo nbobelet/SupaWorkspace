@@ -49,7 +49,7 @@ import { StatusIcon } from './StatusIcon'
 import { TerminalTypeIcon } from './TerminalTypeIcon'
 import { addSessionWithFocus, jumpToSession } from '../lib/sessionFocus'
 import { closeSession } from '../lib/closeSession'
-import { computeToggleAll } from '../lib/workspaceAccordion'
+import { computeExpandOnActivate, computeToggleAll } from '../lib/workspaceAccordion'
 import type { Workspace, WorkspaceTreeNode } from '@shared/workspace'
 import type { SubAppId } from '@shared/sub-app'
 
@@ -200,16 +200,11 @@ export function WorkspaceSidebar(): ReactElement {
   const setSubAppExpanded = useWorkspaceStore((s) => s.setSubAppExpanded)
   const lastUsedType = useSessionStore((s) => s.lastUsedType)
 
-  // Accordion-on-activate: expand exactly the clicked workspace and collapse
-  // every other workspace. Sub-app keys (`wsId:subAppId`) are preserved — they
-  // live in a separate namespace owned by the store, not this Set.
-  const expandExclusive = useCallback((id: string) => {
-    setExpandedIds((prev) => {
-      const next = new Set<string>()
-      for (const key of prev) if (key.includes(':')) next.add(key)
-      next.add(id)
-      return next
-    })
+  // Expand-on-activate: activating a workspace expands it but leaves every
+  // other workspace's expand state untouched — multiple sections may be open
+  // at once. Sub-app keys (`wsId:subAppId`) ride along in the same Set.
+  const expandOnActivate = useCallback((id: string) => {
+    setExpandedIds((prev) => computeExpandOnActivate(id, prev))
   }, [])
 
   // Bring a workspace's terminal sub-app to the foreground: switch the active
@@ -221,9 +216,9 @@ export function WorkspaceSidebar(): ReactElement {
       setActiveWorkspace(workspaceId)
       setActiveSubApp(workspaceId, 'supatty')
       setSubAppExpanded(workspaceId, 'supatty', true)
-      expandExclusive(workspaceId)
+      expandOnActivate(workspaceId)
     },
-    [setActiveWorkspace, setActiveSubApp, setSubAppExpanded, expandExclusive],
+    [setActiveWorkspace, setActiveSubApp, setSubAppExpanded, expandOnActivate],
   )
 
   // Quick-action spawn from the sidebar SupaTTY row — works from any view.
@@ -461,7 +456,7 @@ export function WorkspaceSidebar(): ReactElement {
                   onActivateDashboard={(workspaceId) => {
                     setActiveSubApp(workspaceId, 'dashboard')
                     setActiveWorkspace(workspaceId)
-                    expandExclusive(workspaceId)
+                    expandOnActivate(workspaceId)
                   }}
                   onActivateSupatty={activateSupatty}
                   onQuickSpawn={(workspaceId) => void quickSpawn(workspaceId)}
@@ -471,7 +466,7 @@ export function WorkspaceSidebar(): ReactElement {
                   onActivateTodo={(workspaceId) => {
                     setActiveSubApp(workspaceId, 'todo')
                     setActiveWorkspace(workspaceId)
-                    expandExclusive(workspaceId)
+                    expandOnActivate(workspaceId)
                   }}
                   focusedRow={focusedRow}
                   getTreeKeyHandlers={getTreeKeyHandlers}
