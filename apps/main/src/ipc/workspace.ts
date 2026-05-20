@@ -1,13 +1,15 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import type { BrowserWindow } from 'electron';
+import { dirname } from 'node:path'
+import { resolveWithinBase } from '../workspace/validatePath'
+import type { BrowserWindow } from 'electron'
 import { dialog, ipcMain, shell } from 'electron'
 import type {
   WorkspaceListResponse,
   WorkspaceOpenResponse,
   WorkspaceReadClaudeMdResponse,
-  WorkspaceReadSettingsResponse} from '@shared/ipc';
+  WorkspaceReadSettingsResponse,
+} from '@shared/ipc'
 import {
   ClaudeSettingsSchema,
   IpcChannel,
@@ -40,7 +42,8 @@ export function registerWorkspaceIpc(opts: {
   todoStore: TodoStore
   getMainWindow: () => BrowserWindow | null
 }): () => void {
-  const { workspaceStore, sessionManager, notesStore, supattyStore, todoStore, getMainWindow } = opts
+  const { workspaceStore, sessionManager, notesStore, supattyStore, todoStore, getMainWindow } =
+    opts
 
   ipcMain.handle(IpcChannel.WorkspaceList, async (): Promise<WorkspaceListResponse> => {
     return { workspaces: workspaceStore.list() }
@@ -101,49 +104,55 @@ export function registerWorkspaceIpc(opts: {
     await shell.openPath(target)
   })
 
-  ipcMain.handle(IpcChannel.WorkspaceReadClaudeMd, async (_, raw): Promise<WorkspaceReadClaudeMdResponse> => {
-    const req = WorkspaceReadClaudeMdRequest.parse(raw)
-    const workspace = workspaceStore.getById(req.workspaceId)
-    if (!workspace) throw new Error(`Unknown workspace: ${req.workspaceId}`)
-    if (!workspace.rootPath) return { content: '', exists: false }
-    const path = join(workspace.rootPath, CLAUDE_MD)
-    if (!existsSync(path)) return { content: '', exists: false }
-    const content = await readFile(path, 'utf8')
-    return { content, exists: true }
-  })
+  ipcMain.handle(
+    IpcChannel.WorkspaceReadClaudeMd,
+    async (_, raw): Promise<WorkspaceReadClaudeMdResponse> => {
+      const req = WorkspaceReadClaudeMdRequest.parse(raw)
+      const workspace = workspaceStore.getById(req.workspaceId)
+      if (!workspace) throw new Error(`Unknown workspace: ${req.workspaceId}`)
+      if (!workspace.rootPath) return { content: '', exists: false }
+      const path = resolveWithinBase(workspace.rootPath, CLAUDE_MD)
+      if (!existsSync(path)) return { content: '', exists: false }
+      const content = await readFile(path, 'utf8')
+      return { content, exists: true }
+    },
+  )
 
   ipcMain.handle(IpcChannel.WorkspaceWriteClaudeMd, async (_, raw): Promise<void> => {
     const req = WorkspaceWriteClaudeMdRequest.parse(raw)
     const workspace = workspaceStore.getById(req.workspaceId)
     if (!workspace) throw new Error(`Unknown workspace: ${req.workspaceId}`)
     if (!workspace.rootPath) throw new Error('Workspace has no root path (CLAUDE.md unavailable)')
-    const path = join(workspace.rootPath, CLAUDE_MD)
+    const path = resolveWithinBase(workspace.rootPath, CLAUDE_MD)
     await writeFile(path, req.content, 'utf8')
   })
 
-  ipcMain.handle(IpcChannel.WorkspaceReadSettings, async (_, raw): Promise<WorkspaceReadSettingsResponse> => {
-    const req = WorkspaceReadSettingsRequest.parse(raw)
-    const workspace = workspaceStore.getById(req.workspaceId)
-    if (!workspace) throw new Error(`Unknown workspace: ${req.workspaceId}`)
-    if (!workspace.rootPath) return { settings: {}, exists: false }
-    const path = join(workspace.rootPath, CLAUDE_SETTINGS)
-    if (!existsSync(path)) return { settings: {}, exists: false }
-    const raw_ = await readFile(path, 'utf8')
-    try {
-      const parsed = JSON.parse(raw_)
-      return { settings: ClaudeSettingsSchema.parse(parsed), exists: true }
-    } catch (err) {
-      console.warn(`[workspace] settings.json invalid at ${path}:`, err)
-      return { settings: {}, exists: true }
-    }
-  })
+  ipcMain.handle(
+    IpcChannel.WorkspaceReadSettings,
+    async (_, raw): Promise<WorkspaceReadSettingsResponse> => {
+      const req = WorkspaceReadSettingsRequest.parse(raw)
+      const workspace = workspaceStore.getById(req.workspaceId)
+      if (!workspace) throw new Error(`Unknown workspace: ${req.workspaceId}`)
+      if (!workspace.rootPath) return { settings: {}, exists: false }
+      const path = resolveWithinBase(workspace.rootPath, CLAUDE_SETTINGS)
+      if (!existsSync(path)) return { settings: {}, exists: false }
+      const raw_ = await readFile(path, 'utf8')
+      try {
+        const parsed = JSON.parse(raw_)
+        return { settings: ClaudeSettingsSchema.parse(parsed), exists: true }
+      } catch (err) {
+        console.warn(`[workspace] settings.json invalid at ${path}:`, err)
+        return { settings: {}, exists: true }
+      }
+    },
+  )
 
   ipcMain.handle(IpcChannel.WorkspaceWriteSettings, async (_, raw): Promise<void> => {
     const req = WorkspaceWriteSettingsRequest.parse(raw)
     const workspace = workspaceStore.getById(req.workspaceId)
     if (!workspace) throw new Error(`Unknown workspace: ${req.workspaceId}`)
     if (!workspace.rootPath) throw new Error('Workspace has no root path (settings unavailable)')
-    const path = join(workspace.rootPath, CLAUDE_SETTINGS)
+    const path = resolveWithinBase(workspace.rootPath, CLAUDE_SETTINGS)
     await mkdir(dirname(path), { recursive: true })
     await writeFile(path, JSON.stringify(req.settings, null, 2), 'utf8')
   })

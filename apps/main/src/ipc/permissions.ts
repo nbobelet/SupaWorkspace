@@ -1,5 +1,5 @@
-import { resolve } from 'node:path'
-import type { BrowserWindow } from 'electron';
+import { resolveInput } from '../workspace/validatePath'
+import type { BrowserWindow } from 'electron'
 import { dialog, ipcMain } from 'electron'
 import {
   IpcChannel,
@@ -25,7 +25,7 @@ export function registerPermissionsIpc(opts: {
       const req = PermissionsRequestPathRequest.parse(raw)
       const workspace = workspaceStore.getById(req.workspaceId)
       if (!workspace) throw new Error(`Unknown workspace: ${req.workspaceId}`)
-      const absolutePath = resolve(req.path)
+      const absolutePath = resolveInput(req.path)
 
       if (PermissionGate.check(workspace, absolutePath, req.kind)) {
         return {

@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+} from 'react'
 import { toast } from 'sonner'
 import {
   Settings as SettingsIcon,
@@ -406,7 +414,8 @@ export function WorkspaceSidebar(): ReactElement {
   }, [expandedSubApps])
 
   const tree = useMemo(
-    () => buildWorkspaceTree(workspaces, sessions, order, expandedIds, activeSessionId, activeSubAppId),
+    () =>
+      buildWorkspaceTree(workspaces, sessions, order, expandedIds, activeSessionId, activeSubAppId),
     [workspaces, sessions, order, expandedIds, activeSessionId, activeSubAppId],
   )
 
@@ -420,14 +429,20 @@ export function WorkspaceSidebar(): ReactElement {
   return (
     <aside className="flex w-60 flex-col border-r border-border bg-bg-sunken">
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted">Workspaces</span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted">
+          Workspaces
+        </span>
         <div className="flex items-center gap-1">
           {workspaces.length > 0 && (
             <button
               type="button"
               onClick={toggleAll}
-              title={toggleAllResult.allExpanded ? 'Collapse all workspaces' : 'Expand all workspaces'}
-              aria-label={toggleAllResult.allExpanded ? 'Collapse all workspaces' : 'Expand all workspaces'}
+              title={
+                toggleAllResult.allExpanded ? 'Collapse all workspaces' : 'Expand all workspaces'
+              }
+              aria-label={
+                toggleAllResult.allExpanded ? 'Collapse all workspaces' : 'Expand all workspaces'
+              }
               aria-pressed={toggleAllResult.allExpanded}
               className="inline-flex items-center rounded-sm border border-border bg-bg-elevated p-1 hover:border-border-strong"
             >
@@ -454,7 +469,9 @@ export function WorkspaceSidebar(): ReactElement {
         <SortableContext items={workspaces.map((w) => w.id)} strategy={verticalListSortingStrategy}>
           <ul className="supa-scroll flex-1 overflow-y-auto py-1">
             {workspaces.length === 0 && (
-              <li className="px-3 py-2 text-xs text-muted">No workspaces yet. Click &ldquo;Open&rdquo;.</li>
+              <li className="px-3 py-2 text-xs text-muted">
+                No workspaces yet. Click &ldquo;Open&rdquo;.
+              </li>
             )}
             {workspaces.map((w, idx) => {
               const node = tree[idx]
@@ -528,10 +545,7 @@ export function WorkspaceSidebar(): ReactElement {
         />
       )}
       {notesOverlayFor && (
-        <NotesOverlay
-          workspaceId={notesOverlayFor}
-          onClose={() => setNotesOverlayFor(null)}
-        />
+        <NotesOverlay workspaceId={notesOverlayFor} onClose={() => setNotesOverlayFor(null)} />
       )}
     </aside>
   )
@@ -606,9 +620,7 @@ function WorkspaceTile({
     opacity: isDragging ? 0.4 : undefined,
   }
 
-  const pillStyle = w.color
-    ? { background: `oklch(70% 0.15 ${w.color.hue}deg)` }
-    : undefined
+  const pillStyle = w.color ? { background: `oklch(70% 0.15 ${w.color.hue}deg)` } : undefined
 
   // Narrow the children once so every JSX site below stays type-safe without
   // re-asserting the discriminant.
@@ -718,7 +730,9 @@ function WorkspaceTile({
           aria-expanded={settingsOpen}
           className={[
             'shrink-0 rounded-sm px-1 py-0.5 text-muted hover:text-fg',
-            settingsOpen ? 'opacity-100' : 'opacity-0 group-hover/tile:opacity-100 focus-visible:opacity-100',
+            settingsOpen
+              ? 'opacity-100'
+              : 'opacity-0 group-hover/tile:opacity-100 focus-visible:opacity-100',
           ].join(' ')}
           title="Workspace settings"
         >
@@ -768,13 +782,12 @@ function WorkspaceTile({
               onQuickSpawn={
                 subAppNode.subAppId === 'supatty' ? () => onQuickSpawn(w.id) : undefined
               }
-              focused={
-                focusedRow === `subapp:${subAppNode.workspaceId}:${subAppNode.subAppId}`
-              }
+              focused={focusedRow === `subapp:${subAppNode.workspaceId}:${subAppNode.subAppId}`}
               keyHandlers={getTreeKeyHandlers(subAppNode)}
             >
-              {subAppNode.subAppId === 'supatty' && subAppNode.expanded && (
-                subAppNode.children.length === 0 ? (
+              {subAppNode.subAppId === 'supatty' &&
+                subAppNode.expanded &&
+                (subAppNode.children.length === 0 ? (
                   <p className="pl-10 pr-2 py-1 text-[11px] text-muted">No sessions</p>
                 ) : (
                   <ul>
@@ -787,8 +800,7 @@ function WorkspaceTile({
                       />
                     ))}
                   </ul>
-                )
-              )}
+                ))}
             </SubAppRow>
           ))}
         </ul>
@@ -952,9 +964,7 @@ function TabLeaf({ node, focused, keyHandlers }: TabLeafProps): ReactElement | n
       <div
         className={[
           'flex w-full items-center gap-1.5 pl-10 pr-2 py-1 text-left text-xs',
-          isActiveSession
-            ? 'bg-bg-elevated/80 text-fg'
-            : 'text-fg-subtle hover:bg-bg-elevated/40',
+          isActiveSession ? 'bg-bg-elevated/80 text-fg' : 'text-fg-subtle hover:bg-bg-elevated/40',
         ].join(' ')}
       >
         <button
@@ -984,7 +994,7 @@ function TabLeaf({ node, focused, keyHandlers }: TabLeafProps): ReactElement | n
             />
           )}
           {session.badgeCount > 0 && (
-            <span className="rounded-full bg-accent px-1 text-[10px] font-mono leading-tight text-white">
+            <span className="rounded-full bg-accent px-1 text-[10px] font-mono leading-tight text-bg">
               {session.badgeCount > 9 ? '9+' : session.badgeCount}
             </span>
           )}

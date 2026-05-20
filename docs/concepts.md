@@ -1,21 +1,29 @@
 ---
 type: explanation
-updated: 2026-05-12
+updated: 2026-05-20
 ---
 
 # Concepts
 
 ```
-Workspace (folder + path grant)
-  └─ Session (PTY instance: state, label, history)
-       └─ Type: claude | shell | terminal
+Workspace (folder | home)
+  └─ Sub-app (supatty | notes | todo | dashboard)
+       └─ Session (PTY instance: state, label, history)
+            └─ Type: claude | shell | terminal
 ```
 
-This page pins the three names the rest of the codebase, IPC contract, UI, and docs build on. If you see one of these words elsewhere, it means exactly what is described below — there are no synonyms.
+This page pins the names the rest of the codebase, IPC contract, UI, and docs build on. If you see one of these words elsewhere, it means exactly what is described below — there are no synonyms.
 
 ## Workspace
 
-A **Workspace** is a folder you opened in SupaTerminal, paired with a `PathGrant` for that folder. The path is the **scope boundary**: every Session spawned inside a Workspace inherits its `cwd` and its permissions. Out-of-scope file access — for example a Claude tool call that wants to read a sibling directory — triggers a permission prompt and, on approval, persists as an extra grant on the Workspace. Workspaces survive app restarts via `electron-store`; their grants travel with them.
+A **Workspace** is one of two kinds (see `WorkspaceKind` in `packages/shared/src/workspace.ts`):
+
+- **`folder`** — tied to a real directory. `rootPath` is non-null and is the **scope boundary**: every Session spawned here inherits its cwd and permissions. Out-of-scope file access triggers a permission prompt and, on approval, persists as a `PathGrant` in `permissions.extraPaths`. Deletable.
+- **`home`** — the single permanent default workspace (`HOME_WORKSPACE_ID`, `HOME_WORKSPACE_NAME`). `rootPath` is `null`; there is no implicit scope. Every out-of-scope access must be granted explicitly via `PathGrant`. The Home workspace cannot be deleted.
+
+Both kinds have a `workdir` field (nullable). `workdir` is a **cwd hint only** — it controls where terminals open but grants no additional permissions and is not part of the scope boundary. See [architecture/workspace-scope.md](./architecture/workspace-scope.md) for the full model.
+
+Workspaces survive app restarts via `electron-store`; their grants travel with them.
 
 ## Session
 
@@ -27,10 +35,10 @@ A **Type** is the program a Session is running. Three values exist today: `claud
 
 ## Where each lives
 
-| Concept   | Persisted                | Survives restart | Scope                  |
-| --------- | ------------------------ | ---------------- | ---------------------- |
-| Workspace | `electron-store`         | Yes              | App-wide               |
-| Session   | `sessions-snapshot` only | Metadata only    | Inside one Workspace   |
-| Type      | Inside the Session       | With the Session | Inside one Session     |
+| Concept   | Persisted                | Survives restart | Scope                |
+| --------- | ------------------------ | ---------------- | -------------------- |
+| Workspace | `electron-store`         | Yes              | App-wide             |
+| Session   | `sessions-snapshot` only | Metadata only    | Inside one Workspace |
+| Type      | Inside the Session       | With the Session | Inside one Session   |
 
 Keyboard shortcuts in [keyboard-shortcuts.md](./keyboard-shortcuts.md) are grouped by which concept they act on (`App` / `Active workspace` / `Active session`).

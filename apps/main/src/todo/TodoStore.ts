@@ -1,12 +1,12 @@
 import {
   ARCHIVE_COLUMN_ID,
-  type Column,
   defaultTodoState,
   type Task,
   TODO_SCHEMA_VERSION,
   TodoState,
 } from '@shared/todo'
 import { SubAppStore } from '../sub-apps/SubAppStore'
+import { normalizeColumns } from './normalizeColumns'
 
 /**
  * Per-workspace kanban store. Inherits the byWorkspace envelope from
@@ -46,21 +46,7 @@ export class TodoStore extends SubAppStore<TodoState> {
 
 function repair(state: TodoState): TodoState {
   const columnIds = new Set(state.columns.map((c) => c.id))
-  const archiveExists = columnIds.has(ARCHIVE_COLUMN_ID)
-
-  const columns: Column[] = archiveExists
-    ? state.columns
-    : [
-        ...state.columns,
-        {
-          id: ARCHIVE_COLUMN_ID,
-          name: 'Archive',
-          color: '#64748b',
-          order: state.columns.length,
-          builtin: true,
-        },
-      ]
-  if (!archiveExists) columnIds.add(ARCHIVE_COLUMN_ID)
+  if (!columnIds.has(ARCHIVE_COLUMN_ID)) columnIds.add(ARCHIVE_COLUMN_ID)
 
   const tasks: Task[] = state.tasks.map((t) => {
     const columnId = columnIds.has(t.columnId) ? t.columnId : ARCHIVE_COLUMN_ID
@@ -68,30 +54,8 @@ function repair(state: TodoState): TodoState {
     return { ...t, columnId, createdAt }
   })
 
-  const columnOrder: Record<string, string[]> = {}
-  for (const c of columns) columnOrder[c.id] = []
-
-  const seen = new Set<string>()
-  for (const c of columns) {
-    const fromStored = state.columnOrder[c.id] ?? []
-    for (const taskId of fromStored) {
-      const task = tasks.find((t) => t.id === taskId)
-      if (!task || seen.has(taskId)) continue
-      if (task.columnId !== c.id) continue
-      columnOrder[c.id]!.push(taskId)
-      seen.add(taskId)
-    }
-  }
-  for (const t of tasks) {
-    if (seen.has(t.id)) continue
-    columnOrder[t.columnId]!.push(t.id)
-    seen.add(t.id)
-  }
-
   return {
+    ...normalizeColumns({ ...state, tasks }),
     schemaVersion: TODO_SCHEMA_VERSION,
-    columns,
-    tasks,
-    columnOrder,
   }
 }

@@ -21,7 +21,18 @@
     "docs:health": "tsx scripts/docs-health.ts",
     "commitlint": "commitlint --edit",
     "package": "electron-vite build && electron-builder",
-    "package:dir": "electron-vite build && electron-builder --dir"
+    "package:dir": "electron-vite build && electron-builder --dir",
+    "prepare": "husky",
+    "test:coverage": "vitest run --coverage"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{md,json}": [
+      "prettier --write"
+    ]
   },
   "pnpm": {
     "blockExoticSubdeps": false,
@@ -47,7 +58,9 @@
     "eslint-plugin-react": "^7.37.3",
     "eslint-plugin-react-hooks": "^5.1.0",
     "globals": "^15.14.0",
+    "husky": "^9.1.0",
     "jsdom": "^29.1.1",
+    "lint-staged": "^15.3.0",
     "prettier": "^3.4.2",
     "tailwindcss": "^4.0.0",
     "tsx": "^4.19.2",

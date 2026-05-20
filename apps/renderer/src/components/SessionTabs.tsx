@@ -196,7 +196,8 @@ export function SessionTabs(): ReactElement {
   )
 
   const wsHue = activeWorkspace?.color?.hue
-  const wsPillStyle = wsHue !== undefined ? { background: `oklch(70% 0.15 ${wsHue}deg)` } : undefined
+  const wsPillStyle =
+    wsHue !== undefined ? { background: `oklch(70% 0.15 ${wsHue}deg)` } : undefined
 
   return (
     <div className="flex items-center gap-1 border-b border-border bg-bg-sunken px-2 py-1 text-xs">
@@ -209,17 +210,16 @@ export function SessionTabs(): ReactElement {
               aria-hidden="true"
             />
           )}
-          <span className="truncate font-semibold tracking-tight text-fg" title={activeWorkspace.name}>
+          <span
+            className="truncate font-semibold tracking-tight text-fg"
+            title={activeWorkspace.name}
+          >
             {activeWorkspace.name}
           </span>
         </div>
       )}
 
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-      >
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={scopedOrder} strategy={horizontalListSortingStrategy}>
           <div
             ref={stripRef}
@@ -343,14 +343,10 @@ function SortableTab({
   onClose,
   onContextMenu,
 }: SortableTabProps): ReactElement {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id, disabled: isRenaming })
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    disabled: isRenaming,
+  })
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -371,9 +367,8 @@ function SortableTab({
   // Brief accent ring while the session is in `done` state (1.5s transient
   // pulse driven by the main-process detector). Skip the ring when the tab
   // is already most-urgent (urgentClasses applies a competing ring already).
-  const doneClasses = isDone && !isMostUrgent
-    ? 'ring-1 ring-accent/50 motion-safe:animate-pulse'
-    : ''
+  const doneClasses =
+    isDone && !isMostUrgent ? 'ring-1 ring-accent/50 motion-safe:animate-pulse' : ''
 
   return (
     <div
@@ -408,7 +403,7 @@ function SortableTab({
         <StatusIcon status={status} size={12} />
         {badgeCount > 0 && (
           <span
-            className="rounded-full bg-accent px-1 text-[10px] font-mono leading-tight text-white"
+            className="rounded-full bg-accent px-1 text-[10px] font-mono leading-tight text-bg"
             aria-label={`${badgeCount} unread notification${badgeCount === 1 ? '' : 's'}`}
           >
             {badgeCount > 9 ? '9+' : badgeCount}

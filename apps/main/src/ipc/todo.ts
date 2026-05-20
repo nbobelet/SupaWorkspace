@@ -12,6 +12,7 @@ import {
 } from '@shared/ipc'
 import { ARCHIVE_COLUMN_ID, type TodoState } from '@shared/todo'
 import type { TodoStore } from '../todo/TodoStore'
+import { normalizeColumns } from '../todo/normalizeColumns'
 
 export function registerTodoIpc(opts: { todoStore: TodoStore }): () => void {
   const { todoStore } = opts
@@ -25,7 +26,8 @@ export function registerTodoIpc(opts: { todoStore: TodoStore }): () => void {
     const req = TodoCreateTaskRequest.parse(raw)
     const state = todoStore.mutate(req.workspaceId, (prev) => {
       if (prev.tasks.some((t) => t.id === req.task.id)) return prev
-      const targetCol = prev.columns.find((c) => c.id === req.task.columnId)?.id ?? ARCHIVE_COLUMN_ID
+      const targetCol =
+        prev.columns.find((c) => c.id === req.task.columnId)?.id ?? ARCHIVE_COLUMN_ID
       const task = targetCol === req.task.columnId ? req.task : { ...req.task, columnId: targetCol }
       return {
         ...prev,
@@ -44,7 +46,8 @@ export function registerTodoIpc(opts: { todoStore: TodoStore }): () => void {
     const state = todoStore.mutate(req.workspaceId, (prev) => {
       const prevTask = prev.tasks.find((t) => t.id === req.task.id)
       if (!prevTask) return prev
-      const targetCol = prev.columns.find((c) => c.id === req.task.columnId)?.id ?? prevTask.columnId
+      const targetCol =
+        prev.columns.find((c) => c.id === req.task.columnId)?.id ?? prevTask.columnId
       const task = targetCol === req.task.columnId ? req.task : { ...req.task, columnId: targetCol }
 
       const tasks = prev.tasks.map((t) => (t.id === task.id ? task : t))
@@ -52,7 +55,9 @@ export function registerTodoIpc(opts: { todoStore: TodoStore }): () => void {
         return { ...prev, tasks }
       }
       const columnOrder = { ...prev.columnOrder }
-      columnOrder[prevTask.columnId] = (columnOrder[prevTask.columnId] ?? []).filter((id) => id !== task.id)
+      columnOrder[prevTask.columnId] = (columnOrder[prevTask.columnId] ?? []).filter(
+        (id) => id !== task.id,
+      )
       columnOrder[task.columnId] = [...(columnOrder[task.columnId] ?? []), task.id]
       return { ...prev, tasks, columnOrder }
     })
@@ -101,9 +106,7 @@ export function registerTodoIpc(opts: { todoStore: TodoStore }): () => void {
 
   ipcMain.handle(IpcChannel.TodoSetColumns, async (_, raw): Promise<TodoStateResponse> => {
     const req = TodoSetColumnsRequest.parse(raw)
-    const state = todoStore.mutate(req.workspaceId, (prev) =>
-      applySetColumns(prev, req.columns),
-    )
+    const state = todoStore.mutate(req.workspaceId, (prev) => applySetColumns(prev, req.columns))
     return { state }
   })
 
@@ -125,41 +128,12 @@ export function registerTodoIpc(opts: { todoStore: TodoStore }): () => void {
  * than throwing).
  */
 function applySetColumns(prev: TodoState, nextColumns: TodoState['columns']): TodoState {
-  const archive = nextColumns.find((c) => c.id === ARCHIVE_COLUMN_ID) ?? {
-    id: ARCHIVE_COLUMN_ID,
-    name: 'Archive',
-    color: '#64748b',
-    order: nextColumns.length,
-    builtin: true,
-  }
-  const columns =
-    nextColumns.some((c) => c.id === ARCHIVE_COLUMN_ID)
-      ? nextColumns
-      : [...nextColumns, archive]
-  const validIds = new Set(columns.map((c) => c.id))
+  const validIds = new Set(nextColumns.map((c) => c.id))
+  if (!validIds.has(ARCHIVE_COLUMN_ID)) validIds.add(ARCHIVE_COLUMN_ID)
 
   const tasks = prev.tasks.map((t) =>
     validIds.has(t.columnId) ? t : { ...t, columnId: ARCHIVE_COLUMN_ID },
   )
 
-  const columnOrder: Record<string, string[]> = {}
-  for (const c of columns) columnOrder[c.id] = []
-
-  const seen = new Set<string>()
-  for (const c of columns) {
-    const prior = prev.columnOrder[c.id] ?? []
-    for (const id of prior) {
-      const task = tasks.find((t) => t.id === id)
-      if (!task || seen.has(id) || task.columnId !== c.id) continue
-      columnOrder[c.id]!.push(id)
-      seen.add(id)
-    }
-  }
-  for (const t of tasks) {
-    if (seen.has(t.id)) continue
-    columnOrder[t.columnId]!.push(t.id)
-    seen.add(t.id)
-  }
-
-  return { ...prev, columns, tasks, columnOrder }
+  return normalizeColumns({ ...prev, columns: nextColumns, tasks })
 }
