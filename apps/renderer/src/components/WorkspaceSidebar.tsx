@@ -432,7 +432,7 @@ export function WorkspaceSidebar(): ReactElement {
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={workspaces.map((w) => w.id)} strategy={verticalListSortingStrategy}>
-          <ul className="flex-1 overflow-y-auto py-1">
+          <ul className="supa-scroll flex-1 overflow-y-auto py-1">
             {workspaces.length === 0 && (
               <li className="px-3 py-2 text-xs text-muted">No workspaces yet. Click &ldquo;Open&rdquo;.</li>
             )}
