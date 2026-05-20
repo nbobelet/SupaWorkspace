@@ -9,8 +9,8 @@ import type { SubAppId } from '@shared/sub-app'
  */
 export const SUB_APP_ORDER: readonly SubAppId[] = [
   'dashboard',
-  'explorer',
   'supatty',
+  'explorer',
   'todo',
   'notes',
 ]
