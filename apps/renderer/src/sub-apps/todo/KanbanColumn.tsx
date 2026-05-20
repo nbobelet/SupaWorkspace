@@ -201,7 +201,7 @@ export function KanbanColumn({
       <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
         <ul
           ref={scrollRef}
-          className="supa-scroll flex flex-1 flex-col gap-2 overflow-y-auto p-2"
+          className="supa-scroll flex flex-1 select-none flex-col gap-2 overflow-y-auto p-2"
           onContextMenu={handleContextMenu}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
@@ -300,7 +300,7 @@ function ColumnContextMenu({
         top: position.top,
         visibility: position.ready ? 'visible' : 'hidden',
       }}
-      className="fixed z-50 min-w-[180px] rounded-md border border-border bg-bg-elevated py-1 shadow-lg outline-none"
+      className="fixed z-50 min-w-[180px] select-none rounded-md border border-border bg-bg-elevated py-1 shadow-lg outline-none"
     >
       <ul className="flex flex-col">
         <li>
