@@ -2,7 +2,6 @@ import {
   DndContext,
   KeyboardSensor,
   PointerSensor,
-  closestCenter,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -11,6 +10,7 @@ import {
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react'
 import { ARCHIVE_COLUMN_ID, type Task, type TodoState } from '@shared/todo'
+import { kanbanCollisionDetection } from './collisionDetection'
 import { KanbanColumn } from './KanbanColumn'
 import { resolveActionTargets } from './selection'
 import { TASK_ACTIONS, type CardAction } from './taskActions'
@@ -153,7 +153,7 @@ export function KanbanBoard({
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={kanbanCollisionDetection}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onDragCancel={() => setActiveId(null)}
