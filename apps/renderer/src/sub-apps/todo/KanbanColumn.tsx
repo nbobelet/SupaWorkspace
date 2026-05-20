@@ -15,6 +15,7 @@ import {
 import type { Column, Task, TaskSeverity } from '@shared/todo'
 import { clampMenuPosition, VIEWPORT_MARGIN } from '../../lib/menuPosition'
 import { useWorkspaceStore } from '../../state/workspaceStore'
+import { isOutsidePopup } from './dismiss'
 import { rectFromPoints, type CardRect, type Rect } from './selection'
 import type { CardAction } from './taskActions'
 import { TaskCard } from './TaskCard'
@@ -422,12 +423,13 @@ function useClampedPosition(
 function useDismissOnOutside(ref: RefObject<HTMLElement | null>, onClose: () => void): void {
   useEffect(() => {
     const onPointerDown = (event: PointerEvent): void => {
-      const el = ref.current
-      if (!el) return
-      if (event.target instanceof Node && el.contains(event.target)) return
-      onClose()
+      if (isOutsidePopup(ref.current, event.target)) onClose()
     }
-    const onScroll = (): void => onClose()
+    // A scroll bubbling from the popup's own input (long title overflowing the
+    // composer) must NOT dismiss it — only outside scrolling does.
+    const onScroll = (event: Event): void => {
+      if (isOutsidePopup(ref.current, event.target)) onClose()
+    }
     window.addEventListener('pointerdown', onPointerDown, true)
     window.addEventListener('scroll', onScroll, true)
     return () => {
