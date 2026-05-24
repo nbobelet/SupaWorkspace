@@ -6,9 +6,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('../hooks/useTerminalSession', () => ({
   focusSession: vi.fn(),
   resyncSession: vi.fn(),
+  getTerminalSelection: vi.fn(() => ''),
 }))
 
-import { focusSession, resyncSession } from '../hooks/useTerminalSession'
+import { focusSession, resyncSession, getTerminalSelection } from '../hooks/useTerminalSession'
 import { useSessionStore } from '../state/sessionStore'
 import { useWorkspaceStore } from '../state/workspaceStore'
 import {
@@ -34,6 +35,8 @@ describe('activateSession (click-to-focus contract)', () => {
   beforeEach(() => {
     vi.mocked(focusSession).mockClear()
     vi.mocked(resyncSession).mockClear()
+    vi.mocked(getTerminalSelection).mockClear()
+    vi.mocked(getTerminalSelection).mockReturnValue('')
     useSessionStore.setState({
       sessions: {},
       order: [],
@@ -41,13 +44,17 @@ describe('activateSession (click-to-focus contract)', () => {
       activeByWorkspace: {},
       lastUsedType: 'shell',
     })
+    if (typeof document !== 'undefined') {
+      document.body.innerHTML = ''
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+    }
   })
 
-  // Regression: clicking inside the already-active terminal pane must NOT
-  // re-fire focusSession OR resyncSession. resyncSession -> scrollToBottom,
-  // which destroys an in-flight selection and forces the viewport to the
-  // newest output. Only a real session-switch should catch up to the bottom.
-  it('skips focusSession when the clicked session is already active', async () => {
+  // Selection-preserve invariant: re-activating the already-active pane while
+  // a selection is in flight must NOT resync/focus — resync -> scrollToBottom
+  // destroys the selection and jumps the viewport to the newest output.
+  it('preserves an in-flight selection when the already-active session is re-clicked', async () => {
+    vi.mocked(getTerminalSelection).mockReturnValue('selected text')
     const store = useSessionStore.getState()
     store.addSession({
       id: 's1',
@@ -64,6 +71,31 @@ describe('activateSession (click-to-focus contract)', () => {
 
     expect(focusSession).not.toHaveBeenCalled()
     expect(resyncSession).not.toHaveBeenCalled()
+  })
+
+  // Repro (trigger 2): clicking the already-active session tab after the
+  // xterm lost DOM focus (settings, sidebar, sub-app switch, toast) must
+  // re-focus AND snap to the bottom. With nothing selected there is no
+  // selection to protect, so the old unconditional early-return left the
+  // pane unfocused and stuck mid-scrollback.
+  it('re-focuses and resyncs the already-active session when nothing is selected', async () => {
+    vi.mocked(getTerminalSelection).mockReturnValue('')
+    const store = useSessionStore.getState()
+    store.addSession({
+      id: 's1',
+      workspaceId: 'w1',
+      type: 'shell',
+      label: 'shell',
+      state: 'idle',
+    })
+    store.setActive('s1')
+    expect(useSessionStore.getState().activeId).toBe('s1')
+
+    await activateSession('s1')
+    await flushFrame()
+
+    expect(resyncSession).toHaveBeenCalledWith('s1')
+    expect(focusSession).toHaveBeenCalledWith('s1')
   })
 
   // After the TerminalPane-owned focus refactor, activateSession only marks
