@@ -1,7 +1,7 @@
 import { useSessionStore, type RendererSession } from '../state/sessionStore'
 import { useWorkspaceStore } from '../state/workspaceStore'
 import { useNotificationStore } from '../state/notificationStore'
-import { focusSession, resyncSession } from '../hooks/useTerminalSession'
+import { focusSession, resyncSession, getTerminalSelection } from '../hooks/useTerminalSession'
 import { withViewTransition } from './viewTransition'
 
 function isEditableNonXtermFocused(): boolean {
@@ -32,10 +32,17 @@ export async function activateSession(id: string): Promise<void> {
   useWorkspaceStore.getState().setActiveSubApp(session.workspaceId, 'supatty')
 
   if (!session.pendingSpawn) {
-    // Clicking the already-active pane must not re-focus through the
-    // follow controller — resync() would call scrollToBottom() and wipe
-    // any in-flight selection / scroll-back.
-    if (store.activeId === id) return
+    if (store.activeId === id) {
+      // Re-activating the already-active pane. A non-empty selection must be
+      // preserved — resync() -> scrollToBottom() would wipe it. With nothing
+      // selected there is no scroll-back to protect, so re-focus + snap to
+      // bottom: clicking the active tab after the xterm lost DOM focus
+      // (settings, sidebar, sub-app switch, toast) must restore a typeable,
+      // bottom-anchored terminal rather than no-op.
+      if (getTerminalSelection(id).length > 0) return
+      focusActiveSession(id)
+      return
+    }
     store.setActive(id)
     // TerminalPane.useEffect([isActive]) takes the focus from here.
     return
@@ -80,7 +87,10 @@ export async function activateSession(id: string): Promise<void> {
  * mid-restore and animate scroll for every restored tab.
  */
 export function addSessionWithFocus(
-  session: Omit<RendererSession, 'badgeCount' | 'exitCode' | 'hasUnseenAsking' | 'hasUnseenEnding'> & {
+  session: Omit<
+    RendererSession,
+    'badgeCount' | 'exitCode' | 'hasUnseenAsking' | 'hasUnseenEnding'
+  > & {
     badgeCount?: number
     exitCode?: number | null
     hasUnseenAsking?: boolean
@@ -93,8 +103,7 @@ export function addSessionWithFocus(
   store.setActive(session.id)
 
   const reduceMotion =
-    typeof window !== 'undefined' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
   const scrollBehavior: ScrollBehavior = reduceMotion ? 'auto' : 'smooth'
 
   // Wait for React to commit the new tab into the DOM before scrolling its
