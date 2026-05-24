@@ -126,8 +126,14 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
   // session list). Avoids the toggle race when the caller knows the target.
   setSubAppExpanded: (workspaceId, subAppId, expanded) =>
     set((prev) => {
-      const current = prev.expandedSubApps[workspaceId] ?? SUBAPP_EXPANDED_DEFAULT
-      if (current[subAppId] === expanded) return prev
+      const existing = prev.expandedSubApps[workspaceId]
+      const current = existing ?? SUBAPP_EXPANDED_DEFAULT
+      // Short-circuit only when an EXPLICIT entry already matches. When the
+      // workspace has no entry, `current` is the lazy default — comparing
+      // against it and returning `prev` would leave the store reference
+      // unchanged, so the sidebar's expandedSubApps->Set mirror effect never
+      // fires and the SupaTTY session list stays collapsed on first activate.
+      if (existing && current[subAppId] === expanded) return prev
       const nextForWorkspace: Record<SubAppId, boolean> = { ...current, [subAppId]: expanded }
       return {
         expandedSubApps: { ...prev.expandedSubApps, [workspaceId]: nextForWorkspace },
