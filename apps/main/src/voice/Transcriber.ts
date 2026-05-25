@@ -109,3 +109,22 @@ export class WhisperTranscriber implements Transcriber {
     }
   }
 }
+
+/**
+ * Local-testing transcriber that returns canned text without any native binding
+ * or model. Gated behind SUPA_VOICE_STUB in index.ts so it never ships — it
+ * exists so the capture -> PCM -> policy -> staging -> insert pipeline can be
+ * exercised end-to-end on a host that lacks a C++ toolchain to compile whisper.
+ */
+export class StubTranscriber implements Transcriber {
+  isAvailable(): boolean {
+    return true
+  }
+
+  async transcribe(pcm: Float32Array): Promise<RawTranscript | null> {
+    await new Promise((r) => setTimeout(r, 300))
+    if (pcm.length === 0) return null
+    const seconds = (pcm.length / 16000).toFixed(1)
+    return { text: `stub transcript (${seconds}s of audio captured)`, confidence: 0.95 }
+  }
+}
