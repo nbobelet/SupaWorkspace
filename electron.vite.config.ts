@@ -14,8 +14,11 @@ export default defineConfig({
     build: {
       outDir: 'out/main',
       rollupOptions: {
-        input: resolve(__dirname, 'apps/main/src/index.ts'),
-        external: ['@homebridge/node-pty-prebuilt-multiarch', 'electron-store'],
+        input: {
+          index: resolve(__dirname, 'apps/main/src/index.ts'),
+          'voice-worker': resolve(__dirname, 'apps/main/src/voice/voice-worker.ts'),
+        },
+        external: ['@homebridge/node-pty-prebuilt-multiarch', 'electron-store', 'smart-whisper'],
       },
     },
   },

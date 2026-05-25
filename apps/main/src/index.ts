@@ -21,7 +21,7 @@ import { registerCmdGuardIpc } from './ipc/cmdGuard'
 import { registerBugReportIpc } from './ipc/bugReport'
 import { registerSettingsIpc } from './ipc/settings'
 import { registerVoiceIpc } from './ipc/voice'
-import { StubTranscriber, WhisperTranscriber } from './voice/Transcriber'
+import { StubTranscriber, WhisperWorkerTranscriber } from './voice/Transcriber'
 import { VoiceService } from './voice/VoiceService'
 import { registerExplorerIpc } from './explorer'
 import { IpcChannel } from '@shared/ipc'
@@ -185,7 +185,7 @@ void app.whenReady().then(async () => {
   const voiceService = new VoiceService({
     transcriber: process.env.SUPA_VOICE_STUB
       ? new StubTranscriber()
-      : new WhisperTranscriber(app.getPath('userData')),
+      : new WhisperWorkerTranscriber(app.getPath('userData'), join(__dirname, 'voice-worker.js')),
     getSession: (id) => sessionManager.getConfig(id),
   })
   registerVoiceIpc({ voiceService })

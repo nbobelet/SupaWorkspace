@@ -1,0 +1,13 @@
+diff --git a/src/binding/model.cc b/src/binding/model.cc
+index 902f8888c7063898d1a6b6219e5384019d1f642e..ac07267eab7d3bfc3f961d7d4ada64a96a1c4dd1 100644
+--- a/src/binding/model.cc
++++ b/src/binding/model.cc
+@@ -99,7 +99,7 @@ Napi::Value WhisperModel::Load(const Napi::CallbackInfo &info) {
+ 
+     std::string model_path = info[0].As<Napi::String>();
+ 
+-    whisper_context_params params;
++    whisper_context_params params = whisper_context_default_params();
+     params.use_gpu = info.Length() == 2 ? info[1].As<Napi::Boolean>() : true;
+ 
+     auto worker = new LoadModelWorker(env, model_path, params);

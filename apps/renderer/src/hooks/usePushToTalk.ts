@@ -54,6 +54,7 @@ export function usePushToTalk(): void {
       const mono16k = downsampleTo16kMono(pcm, sampleRate)
       const bytes = float32ToBytes(mono16k)
 
+      useVoiceStore.getState().startTranscribing(target)
       try {
         const res = await window.ws.voice.transcribe({
           sessionId: target,
@@ -68,6 +69,8 @@ export function usePushToTalk(): void {
       } catch {
         // Transcription is best-effort: a failed round-trip is a no-op, never a
         // thrown error in the UI.
+      } finally {
+        useVoiceStore.getState().stopTranscribing()
       }
     }
 

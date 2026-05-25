@@ -39,19 +39,37 @@ time the app starts. Avoid chords already used by built-in shortcuts (e.g.
 
 ## Install the speech model
 
-Local transcription needs the whisper.cpp binding and a model:
+Local transcription needs the whisper.cpp binding (`smart-whisper`) and a model.
+The binding is an **optional dependency**: `pnpm install` applies our source patch
+but does **not** compile it (`allowBuilds: smart-whisper: false`), so the
+no-native-compile clean-install guarantee holds. You opt in explicitly:
 
-1. Install the in-memory binding yourself: `pnpm add smart-whisper`. It is **not**
-   a declared dependency — bundling it would compile whisper.cpp from source on
-   every `pnpm install` and break the no-native-compile clean-install guarantee.
-   The app loads it lazily and degrades gracefully when it is absent.
-2. Place a multilingual model at `<userData>/models/ggml-base.bin`
-   (the `userData` path is logged on boot as `[supa] userData = …`). The
-   `ggml-base` multilingual model (~150 MB) handles mixed French/English; you
-   can swap in `small`/`medium` for higher accuracy.
+1. **Build the native binding for Electron's ABI** — once, and again whenever the
+   Electron major changes:
+
+   ```
+   pnpm rebuild:voice
+   ```
+
+   This compiles `smart-whisper` against the Electron headers (the install-time
+   build would target the system Node ABI and fail to load in Electron).
+   **Windows** needs the "Desktop development with C++" workload (Visual Studio
+   2022 Build Tools); the script passes `--msvs_version=2022` so node-gyp picks it
+   even when a newer, not-yet-recognised VS is also installed.
+
+2. **Place a multilingual model** at `<userData>/models/ggml-base.bin` (the
+   `userData` path is logged on boot as `[supa] userData = …`). The `ggml-base`
+   multilingual model (~150 MB) handles mixed French/English; swap in
+   `small`/`medium` for higher accuracy.
 
 Until both are present, the listening badge reports `voice model missing` and no
 audio is captured beyond the permission prompt.
+
+> **Isolation:** transcription runs in an Electron `utilityProcess`, not the main
+> process — whisper.cpp's native worker threads fast-fail if spun up in the main
+> process. A whisper crash therefore degrades to "no transcript", never an app
+> crash. While the worker transcribes, the pane header shows a `transcribing…`
+> badge.
 
 ## Privacy
 

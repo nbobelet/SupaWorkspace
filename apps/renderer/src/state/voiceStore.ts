@@ -11,10 +11,16 @@ import type { VoiceRejectReason } from '@shared/ipc'
  */
 interface VoiceStoreState {
   listeningSessionId: string | null
+  /** Session whose captured audio is mid-transcription (key released, awaiting
+   *  the main round-trip). Surfaced as a "transcribing" badge so the wait —
+   *  worker fork + model load on first use can take a beat — is not silent. */
+  transcribingSessionId: string | null
   staged: Record<string, string>
   rejected: Record<string, VoiceRejectReason>
   startListening: (sessionId: string) => void
   stopListening: () => void
+  startTranscribing: (sessionId: string) => void
+  stopTranscribing: () => void
   setStaged: (sessionId: string, text: string) => void
   clearStaged: (sessionId: string) => void
   setRejected: (sessionId: string, reason: VoiceRejectReason) => void
@@ -23,10 +29,13 @@ interface VoiceStoreState {
 
 export const useVoiceStore = create<VoiceStoreState>((set) => ({
   listeningSessionId: null,
+  transcribingSessionId: null,
   staged: {},
   rejected: {},
   startListening: (sessionId) => set({ listeningSessionId: sessionId }),
   stopListening: () => set({ listeningSessionId: null }),
+  startTranscribing: (sessionId) => set({ transcribingSessionId: sessionId }),
+  stopTranscribing: () => set({ transcribingSessionId: null }),
   setStaged: (sessionId, text) =>
     set((prev) => ({
       staged: { ...prev.staged, [sessionId]: text },

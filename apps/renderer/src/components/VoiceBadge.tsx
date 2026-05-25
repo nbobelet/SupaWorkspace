@@ -16,6 +16,7 @@ const REJECT_LABEL: Record<string, string> = {
  */
 export function VoiceBadge({ sessionId }: { sessionId: string }): ReactElement | null {
   const listening = useVoiceStore((s) => s.listeningSessionId === sessionId)
+  const transcribing = useVoiceStore((s) => s.transcribingSessionId === sessionId)
   const rejected = useVoiceStore((s) => s.rejected[sessionId])
   const clearRejected = useVoiceStore((s) => s.clearRejected)
 
@@ -34,6 +35,19 @@ export function VoiceBadge({ sessionId }: { sessionId: string }): ReactElement |
       >
         <span className="inline-block h-1.5 w-1.5 rounded-full bg-running motion-safe:animate-pulse" />
         listening
+      </span>
+    )
+  }
+
+  if (transcribing) {
+    return (
+      <span
+        aria-live="assertive"
+        aria-label="transcribing voice input"
+        className="flex items-center gap-1 rounded-full bg-accent/20 px-2 py-0.5 text-[10px] uppercase tracking-wider text-accent"
+      >
+        <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent motion-safe:animate-pulse" />
+        transcribing…
       </span>
     )
   }

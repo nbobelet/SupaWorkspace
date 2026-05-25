@@ -5,6 +5,7 @@ allowBuilds:
   '@homebridge/node-pty-prebuilt-multiarch': true
   electron: true
   esbuild: true
-  smart-whisper: set this to true or false
+  smart-whisper: false
 patchedDependencies:
   '@homebridge/node-pty-prebuilt-multiarch@0.12.0': patches/@homebridge__node-pty-prebuilt-multiarch@0.12.0.patch
+  smart-whisper@0.8.1: patches/smart-whisper@0.8.1.patch

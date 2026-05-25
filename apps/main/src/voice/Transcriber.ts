@@ -1,6 +1,8 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { utilityProcess, type UtilityProcess } from 'electron'
 import type { RawTranscript } from './transcript-policy'
+import type { VoiceWorkerRequest, VoiceWorkerResponse } from './voice-worker'
 
 /**
  * In-memory speech-to-text boundary. Implementations receive 16 kHz mono PCM
@@ -29,57 +31,63 @@ export function resolveModelPath(userDataDir: string): string {
   return join(userDataDir, 'models', 'ggml-base.bin')
 }
 
-// Minimal structural type for the optional `smart-whisper` binding. Declared
-// locally (instead of `import type 'smart-whisper'`) so `tsc` does not require
-// the optional native dependency to be installed for typecheck to pass.
-interface WhisperSegment {
-  text: string
-  confidence?: number
-}
-interface WhisperInstance {
-  transcribe: (
-    pcm: Float32Array,
-    opts?: { language?: string },
-  ) => { result: Promise<WhisperSegment[]> }
-  free: () => Promise<void>
-}
-interface SmartWhisperModule {
-  Whisper: new (modelPath: string) => WhisperInstance
-}
-
 /**
- * whisper.cpp-backed transcriber via the in-memory `smart-whisper` binding
- * (Float32Array in → segments out, no temp WAV). The binding is an
- * OPTIONAL dependency loaded lazily and guarded: if it is not installed, or the
- * model is missing from userData, the transcriber reports unavailable and the
- * feature degrades gracefully rather than crashing the main process.
+ * whisper.cpp-backed transcriber via the `smart-whisper` binding, isolated in an
+ * Electron `utilityProcess` (see `voice-worker.ts`) so its native worker threads
+ * never run in the main process. The binding + model are OPTIONAL: a missing
+ * model short-circuits to `null` here, and the worker reports `unavailable` if
+ * the native binding can't load — either way the feature degrades gracefully
+ * instead of crashing the app. The utility process is forked lazily on first
+ * use and reused; if it dies mid-request the pending promise resolves `null`.
  */
-export class WhisperTranscriber implements Transcriber {
+export class WhisperWorkerTranscriber implements Transcriber {
   private readonly modelPath: string
-  private loaded: WhisperInstance | null = null
-  private bindingMissing = false
+  private readonly workerPath: string
+  private child: UtilityProcess | null = null
+  private nextId = 1
+  private unavailable = false
+  private readonly pending = new Map<number, (r: RawTranscript | null) => void>()
 
-  constructor(userDataDir: string) {
+  constructor(userDataDir: string, workerPath: string) {
     this.modelPath = resolveModelPath(userDataDir)
+    this.workerPath = workerPath
   }
 
   isAvailable(): boolean {
-    return !this.bindingMissing && existsSync(this.modelPath)
+    return !this.unavailable && existsSync(this.modelPath)
   }
 
-  private async load(): Promise<WhisperInstance | null> {
-    if (this.loaded) return this.loaded
-    if (this.bindingMissing || !existsSync(this.modelPath)) return null
-    try {
-      // Specifier cast to `string` keeps tsc from resolving (and requiring) the
-      // optional module at build time; it is a real runtime import when present.
-      const mod = (await import('smart-whisper' as string)) as SmartWhisperModule
-      this.loaded = new mod.Whisper(this.modelPath)
-      return this.loaded
-    } catch {
-      this.bindingMissing = true
-      return null
-    }
+  private resolveAll(value: RawTranscript | null): void {
+    for (const resolve of this.pending.values()) resolve(value)
+    this.pending.clear()
+  }
+
+  private ensureChild(): UtilityProcess {
+    if (this.child) return this.child
+    // Default stdio (not 'pipe'): whisper.cpp's native model-load/inference
+    // chatter would otherwise flood the main console. Failures still surface as
+    // 'unavailable'/null messages + the exit-code log below.
+    const child = utilityProcess.fork(this.workerPath, [], { serviceName: 'supa-voice-whisper' })
+    child.on('message', (msg: VoiceWorkerResponse) => {
+      const resolve = this.pending.get(msg.id)
+      if (!resolve) return
+      this.pending.delete(msg.id)
+      if (msg.type === 'unavailable') {
+        this.unavailable = true
+        resolve(null)
+      } else {
+        resolve(msg.text === null ? null : { text: msg.text, confidence: msg.confidence })
+      }
+    })
+    // A whisper crash kills only this child; surface it as "no transcript" and
+    // allow a fresh fork on the next utterance rather than wedging the feature.
+    child.on('exit', (code) => {
+      console.error(`[voice] whisper worker exited code=${code}`)
+      this.child = null
+      this.resolveAll(null)
+    })
+    this.child = child
+    return child
   }
 
   async transcribe(
@@ -87,26 +95,24 @@ export class WhisperTranscriber implements Transcriber {
     _sampleRate: number,
     language?: string,
   ): Promise<RawTranscript | null> {
-    const whisper = await this.load()
-    if (!whisper) return null
-    try {
-      const task = whisper.transcribe(pcm, language ? { language } : undefined)
-      const segments = await task.result
-      const text = segments
-        .map((s) => s.text)
-        .join(' ')
-        .trim()
-      if (text.length === 0) return null
-      // Average the per-segment confidence when the binding reports it; default
-      // to a neutral-pass value otherwise so the policy gate stays meaningful.
-      const confs = segments
-        .map((s) => s.confidence)
-        .filter((c): c is number => typeof c === 'number')
-      const confidence = confs.length > 0 ? confs.reduce((a, b) => a + b, 0) / confs.length : 0.8
-      return { text, confidence: Math.max(0, Math.min(1, confidence)) }
-    } catch {
-      return null
+    if (!existsSync(this.modelPath)) return null
+    const child = this.ensureChild()
+    const id = this.nextId++
+    // Copy off the (about-to-be-zeroed) IPC buffer; utilityProcess structured-
+    // clones the bytes to the child (it only *transfers* MessagePorts, not
+    // ArrayBuffers), and a short utterance is a few hundred KB.
+    const copy = pcm.slice()
+    const req: VoiceWorkerRequest = {
+      type: 'transcribe',
+      id,
+      modelPath: this.modelPath,
+      pcm: new Uint8Array(copy.buffer),
+      ...(language ? { language } : {}),
     }
+    return new Promise<RawTranscript | null>((resolve) => {
+      this.pending.set(id, resolve)
+      child.postMessage(req)
+    })
   }
 }
 
