@@ -1,3 +1,7 @@
+// @vitest-environment jsdom
+// jsdom (not node) so the transitive sessionFocus -> useTerminalSession ->
+// @xterm/addon-fit import chain finds `self` at module-eval time; the addon's
+// UMD wrapper references `self`, which is undefined under the node env.
 import { describe, it, expect } from 'vitest'
 import type { WorkspaceTreeNode } from '@shared/workspace'
 import { flattenVisibleRows, findNextRow } from './useSidebarKeyboard'
@@ -6,8 +10,12 @@ import { flattenVisibleRows, findNextRow } from './useSidebarKeyboard'
 // the hook (`kind` discriminator + `expanded` flag + `children`/`tabs`).
 // Cast through `unknown` is deliberate — the test only exercises the pure
 // helpers' duck-typed reads, not the full Zod-validated shape.
-function workspace(id: string, expanded: boolean, children: WorkspaceTreeNode[]): WorkspaceTreeNode {
-  return { kind: 'workspace', id, expanded, children } as unknown as WorkspaceTreeNode
+function workspace(
+  id: string,
+  expanded: boolean,
+  children: WorkspaceTreeNode[],
+): WorkspaceTreeNode {
+  return { kind: 'workspace', workspaceId: id, expanded, children } as unknown as WorkspaceTreeNode
 }
 function subApp(
   workspaceId: string,
