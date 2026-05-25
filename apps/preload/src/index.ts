@@ -36,6 +36,8 @@ import type {
   ExplorerOpenResponse,
   ExplorerReadFileResponse,
   ExplorerSearchResponse,
+  VoiceTranscribeRequest,
+  VoiceTranscribeResponse,
 } from '@shared/ipc'
 import type { SessionSnapshotListResponse, SessionSnapshotClearResponse } from '@shared/snapshot'
 import type {
@@ -188,6 +190,10 @@ const api = {
       ipcRenderer.invoke(IpcChannel.ExplorerSearch, { workspaceId, query, searchId }),
     searchCancel: (workspaceId: string, searchId: number): Promise<void> =>
       ipcRenderer.invoke(IpcChannel.ExplorerSearchCancel, { workspaceId, searchId }),
+  },
+  voice: {
+    transcribe: (req: VoiceTranscribeRequest): Promise<VoiceTranscribeResponse> =>
+      ipcRenderer.invoke(IpcChannel.VoiceTranscribe, req),
   },
 }
 

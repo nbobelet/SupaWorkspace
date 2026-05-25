@@ -51,6 +51,13 @@ mac:
       arch: [universal]
   category: public.app-category.developer-tools
   artifactName: "${productName}-${version}-${arch}.${ext}"
+  # Microphone access for push-to-talk voice capture. macOS refuses
+  # getUserMedia({ audio }) without this Info.plist string; the OS shows it in
+  # the permission prompt. Windows grants mic via the system privacy prompt (no
+  # manifest capability needed for an unpackaged NSIS desktop app); Linux routes
+  # through the PipeWire portal at runtime.
+  extendInfo:
+    NSMicrophoneUsageDescription: "SupaWorkspace uses the microphone for push-to-talk voice input into Claude sessions. Audio is transcribed locally and never leaves your machine."
 
 dmg:
   contents:

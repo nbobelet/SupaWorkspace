@@ -1,5 +1,17 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react'
-import { useTerminalSession, getTerminalSelection, terminalPaste, terminalSelectAll } from '../hooks/useTerminalSession'
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactElement,
+} from 'react'
+import {
+  useTerminalSession,
+  getTerminalSelection,
+  terminalPaste,
+  terminalSelectAll,
+} from '../hooks/useTerminalSession'
 import { useSessionStore } from '../state/sessionStore'
 import { useWorkspaceStore } from '../state/workspaceStore'
 import { useSearchBarStore } from '../state/searchBarStore'
@@ -8,6 +20,8 @@ import { clampMenuPosition, VIEWPORT_MARGIN } from '../lib/menuPosition'
 import { focusActiveSession } from '../lib/sessionFocus'
 import { SearchBar } from './SearchBar'
 import { showCopiedToast } from './ClipboardToast'
+import { VoiceBadge } from './VoiceBadge'
+import { VoiceStagingChip } from './VoiceStagingChip'
 
 interface TerminalPaneProps {
   sessionId: string
@@ -203,7 +217,10 @@ export function TerminalPane({ sessionId, isActive, onFocus }: TerminalPaneProps
   const hue = workspace?.color?.hue
   const wrapperStyle: CSSProperties | undefined =
     hue !== undefined
-      ? ({ ['--ws-hue' as string]: `${hue}deg`, borderLeftColor: 'oklch(70% 0.15 var(--ws-hue))' } as CSSProperties)
+      ? ({
+          ['--ws-hue' as string]: `${hue}deg`,
+          borderLeftColor: 'oklch(70% 0.15 var(--ws-hue))',
+        } as CSSProperties)
       : undefined
 
   const state = session?.state ?? 'idle'
@@ -227,10 +244,9 @@ export function TerminalPane({ sessionId, isActive, onFocus }: TerminalPaneProps
       ].join(' ')}
     >
       <header className="flex items-center justify-between border-b border-border bg-bg-sunken px-3 py-1.5 text-xs">
-        <span className="font-mono text-fg-subtle">
-          {session?.label ?? sessionId.slice(0, 8)}
-        </span>
+        <span className="font-mono text-fg-subtle">{session?.label ?? sessionId.slice(0, 8)}</span>
         <div className="flex items-center gap-1.5">
+          <VoiceBadge sessionId={sessionId} />
           {progress && progress.state !== 0
             ? (() => {
                 const pill = progressPill(progress)
@@ -270,6 +286,7 @@ export function TerminalPane({ sessionId, isActive, onFocus }: TerminalPaneProps
           onClose={() => useSearchBarStore.getState().close(sessionId)}
         />
       )}
+      <VoiceStagingChip sessionId={sessionId} />
       {ctxMenu && (
         <div
           ref={ctxMenuRef}
@@ -295,9 +312,7 @@ export function TerminalPane({ sessionId, isActive, onFocus }: TerminalPaneProps
                 onClick={handleCopy}
                 className={[
                   'flex w-full items-center justify-between gap-4 px-3 py-1.5 text-left text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent',
-                  hasSelection
-                    ? 'text-fg hover:bg-bg'
-                    : 'cursor-not-allowed text-muted',
+                  hasSelection ? 'text-fg hover:bg-bg' : 'cursor-not-allowed text-muted',
                 ].join(' ')}
                 aria-label="Copy selection"
               >

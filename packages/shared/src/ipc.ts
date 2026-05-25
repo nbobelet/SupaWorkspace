@@ -55,6 +55,7 @@ export const IpcChannel = {
   ExplorerReadFile: 'explorer:read-file',
   ExplorerSearch: 'explorer:search',
   ExplorerSearchCancel: 'explorer:search-cancel',
+  VoiceTranscribe: 'voice:transcribe',
 } as const
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel]
 
@@ -307,12 +308,31 @@ export type NotesSetRequest = z.infer<typeof NotesSetRequest>
  *  - `notifyOnLongProgressComplete: false` (off by default; reserved for a
  *    future Notifier wave, not yet wired)
  */
+/**
+ * Push-to-talk voice capture settings. `enabled` gates the feature wholesale;
+ * `pushToTalkKey` is the hold-chord (default `Ctrl+Shift+M`), rebindable here —
+ * the app has no `keybindings.json`, so the keybind lives in app settings.
+ * Added in the voice-to-claude-pane wave with a `.default` on the parent so a
+ * pre-existing `settings.json` (no `voice` key) still validates on `get`.
+ */
+export const VoiceSettingsZ = z.object({
+  enabled: z.boolean(),
+  pushToTalkKey: z.string().min(1),
+})
+export type VoiceSettings = z.infer<typeof VoiceSettingsZ>
+
+export const DEFAULT_VOICE_SETTINGS: VoiceSettings = {
+  enabled: true,
+  pushToTalkKey: 'Ctrl+Shift+M',
+}
+
 export const SettingsZ = z.object({
   clipboard: z.object({
     allowOscWrite: z.boolean(),
     allowOscRead: z.boolean(),
     notifyOnLongProgressComplete: z.boolean(),
   }),
+  voice: VoiceSettingsZ.default(DEFAULT_VOICE_SETTINGS),
 })
 export type Settings = z.infer<typeof SettingsZ>
 
@@ -327,6 +347,12 @@ export const SettingsUpdatePayloadZ = z.object({
       allowOscWrite: z.boolean().optional(),
       allowOscRead: z.boolean().optional(),
       notifyOnLongProgressComplete: z.boolean().optional(),
+    })
+    .optional(),
+  voice: z
+    .object({
+      enabled: z.boolean().optional(),
+      pushToTalkKey: z.string().min(1).optional(),
     })
     .optional(),
 })
@@ -566,3 +592,55 @@ export const ExplorerSearchResponse = z.discriminatedUnion('status', [
   }),
 ])
 export type ExplorerSearchResponse = z.infer<typeof ExplorerSearchResponse>
+
+/**
+ * Push-to-talk → local STT. The renderer captures mic audio while the hold-key
+ * is down, downsamples to 16 kHz mono PCM (float32, little-endian bytes), and
+ * submits it together with the session locked at *key-down* (`sessionId`).
+ *
+ * The audio never touches disk: it is a transient `Uint8Array` carried over IPC
+ * once, decoded to a `Float32Array` view in main, transcribed in-memory, and
+ * the backing buffer is zeroed immediately after (audio_retention_zero).
+ *
+ * `sessionId` is UNTRUSTED — main re-checks it is a currently-live `claude`
+ * session before transcribing, and rejects otherwise (no transcript leaks for
+ * a stale/spoofed id).
+ */
+export const VoiceTranscribeRequest = z.object({
+  sessionId: z.string().uuid(),
+  /** 16 kHz mono PCM float32 samples as raw little-endian bytes. */
+  pcm: z.instanceof(Uint8Array),
+  sampleRate: z.number().int().positive(),
+  /** BCP-47 hint (e.g. `fr`, `en`); omitted = whisper auto-detect (FR/EN code-switch). */
+  language: z.string().optional(),
+})
+export type VoiceTranscribeRequest = z.infer<typeof VoiceTranscribeRequest>
+
+export const VoiceRejectReason = z.enum([
+  'session-not-live', // sessionId is not a currently-live claude session
+  'low-confidence', // transcript below the acceptance threshold
+  'empty', // whisper returned no usable text
+  'stt-unavailable', // model/binding not installed on this machine
+])
+export type VoiceRejectReason = z.infer<typeof VoiceRejectReason>
+
+/**
+ * `ok` carries the transcript the renderer stages (un-sent) in the target pane.
+ * `rejected` carries a machine-reason the renderer surfaces as a transient
+ * badge — never an exception, so a misheard/blocked utterance is a no-op, not a
+ * crash. No transcript is ever returned on the `rejected` branch.
+ */
+export const VoiceTranscribeResponse = z.discriminatedUnion('status', [
+  z.object({
+    status: z.literal('ok'),
+    sessionId: z.string().uuid(),
+    transcript: z.string(),
+    confidence: z.number().min(0).max(1),
+  }),
+  z.object({
+    status: z.literal('rejected'),
+    reason: VoiceRejectReason,
+    confidence: z.number().min(0).max(1).optional(),
+  }),
+])
+export type VoiceTranscribeResponse = z.infer<typeof VoiceTranscribeResponse>

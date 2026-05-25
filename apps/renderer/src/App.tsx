@@ -21,6 +21,7 @@ import { usePaletteStore } from './state/paletteStore'
 import { useCmdGuardStore } from './state/cmdGuardStore'
 import { useSearchBarStore } from './state/searchBarStore'
 import { useKeybindings } from './hooks/useKeybindings'
+import { usePushToTalk } from './hooks/usePushToTalk'
 import { getTerminalSelection, terminalPaste } from './hooks/useTerminalSession'
 import { showCopiedToast } from './components/ClipboardToast'
 import { withViewTransition } from './lib/viewTransition'
@@ -224,6 +225,8 @@ export function App(): ReactElement {
     },
     [activeWorkspaceId, activeId, scopedOrder, reorderScopedTab],
   )
+
+  usePushToTalk()
 
   useKeybindings({
     jumpToSession: (i) => {

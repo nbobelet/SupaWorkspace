@@ -20,6 +20,9 @@ import { registerSessionSnapshotIpc } from './ipc/sessionSnapshot'
 import { registerCmdGuardIpc } from './ipc/cmdGuard'
 import { registerBugReportIpc } from './ipc/bugReport'
 import { registerSettingsIpc } from './ipc/settings'
+import { registerVoiceIpc } from './ipc/voice'
+import { WhisperTranscriber } from './voice/Transcriber'
+import { VoiceService } from './voice/VoiceService'
 import { registerExplorerIpc } from './explorer'
 import { IpcChannel } from '@shared/ipc'
 import { WORKSPACE_RETENTION_MS } from '@shared/workspace'
@@ -179,6 +182,11 @@ void app.whenReady().then(async () => {
   registerCmdGuardIpc({ cmdGuardStore })
   registerBugReportIpc({ bugReportStore })
   registerSettingsIpc({ settingsStore })
+  const voiceService = new VoiceService({
+    transcriber: new WhisperTranscriber(app.getPath('userData')),
+    getSession: (id) => sessionManager.getConfig(id),
+  })
+  registerVoiceIpc({ voiceService })
   registerExplorerIpc({ workspaceStore })
 
   createWindow()

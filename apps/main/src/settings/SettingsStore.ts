@@ -1,5 +1,5 @@
 import Store from 'electron-store'
-import type { Settings, SettingsUpdatePayload } from '@shared/ipc'
+import { DEFAULT_VOICE_SETTINGS, type Settings, type SettingsUpdatePayload } from '@shared/ipc'
 
 /**
  * On-disk shape mirrors the renderer-facing `Settings` schema. We keep
@@ -17,6 +17,7 @@ const DEFAULTS: Settings = {
     allowOscRead: false,
     notifyOnLongProgressComplete: false,
   },
+  voice: DEFAULT_VOICE_SETTINGS,
 }
 
 /**
@@ -61,6 +62,13 @@ export class SettingsStore {
       clipboard: {
         ...current.clipboard,
         ...(patch.clipboard ?? {}),
+      },
+      // `current.voice` may be absent when migrating a pre-voice settings.json —
+      // fall back to defaults so the merge never produces a partial voice block.
+      voice: {
+        ...DEFAULT_VOICE_SETTINGS,
+        ...(current.voice ?? {}),
+        ...(patch.voice ?? {}),
       },
     }
     this.store.set('settings', next)
