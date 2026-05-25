@@ -229,7 +229,15 @@ export function TerminalPane({ sessionId, isActive, onFocus }: TerminalPaneProps
   return (
     <div
       ref={wrapperRef}
-      onMouseDown={onFocus}
+      // Only an INACTIVE pane needs the activate-on-mousedown path (mosaic
+      // background pane, cascade window — one click brings it to front). On the
+      // already-active pane, forwarding to onFocus -> activateSession runs the
+      // re-activate branch (resync -> scrollToBottom), snapping the viewport to
+      // the bottom on every body click: scrollback becomes unreadable and an
+      // in-progress drag-selection is wiped (selection is still empty at
+      // mousedown, so the preserve-selection guard never fires). xterm handles
+      // focus/selection/scroll natively for the active pane — leave it alone.
+      onMouseDown={isActive ? undefined : onFocus}
       style={wrapperStyle}
       data-session-id={sessionId}
       data-state={state}
