@@ -551,8 +551,13 @@ export function WorkspaceSidebar(): ReactElement {
           workspaceName={workdirPromptFor.name}
           initialValue={workdirPromptFor.workdir ?? ''}
           onSubmit={(value) => {
-            void setWorkdir(workdirPromptFor.id, value)
+            const target = workdirPromptFor
             setWorkdirPromptFor(null)
+            void setWorkdir(target.id, value).catch((err: unknown) => {
+              toast.error(
+                `Failed to set working directory: ${err instanceof Error ? err.message : String(err)}`,
+              )
+            })
           }}
           onClose={() => setWorkdirPromptFor(null)}
         />
