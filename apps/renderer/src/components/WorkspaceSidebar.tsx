@@ -57,6 +57,7 @@ import { clampMenuPosition, VIEWPORT_MARGIN } from '../lib/menuPosition'
 import { NotesOverlay } from './NotesOverlay'
 import { WorkspaceTrashPanel } from './WorkspaceTrashPanel'
 import { WorkspaceSettingsMenu } from './WorkspaceSettingsMenu'
+import { WorkdirPrompt } from './WorkdirPrompt'
 import { StatusIcon } from './StatusIcon'
 import { TerminalTypeIcon } from './TerminalTypeIcon'
 import { addSessionWithFocus, jumpToSession } from '../lib/sessionFocus'
@@ -173,6 +174,7 @@ export function WorkspaceSidebar(): ReactElement {
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   const [settingsOpenFor, setSettingsOpenFor] = useState<string | null>(null)
   const [notesOverlayFor, setNotesOverlayFor] = useState<string | null>(null)
+  const [workdirPromptFor, setWorkdirPromptFor] = useState<Workspace | null>(null)
   const [trashOpen, setTrashOpen] = useState(false)
   const setColor = useWorkspaceStore((s) => s.setColor)
   const setWorkdir = useWorkspaceStore((s) => s.setWorkdir)
@@ -357,21 +359,13 @@ export function WorkspaceSidebar(): ReactElement {
     setMenu(null)
   }, [])
 
-  // workdir is a cwd hint only (no scope grant). Prompt-based for this cut;
-  // a folder picker / file explorer lands in a later feature.
-  const editWorkdir = useCallback(
-    async (workspace: Workspace) => {
-      setMenu(null)
-      const input = window.prompt(
-        `Working directory for "${workspace.name}" (blank to clear).\nWSL sessions accept a Linux path, e.g. /home/nico/proj:`,
-        workspace.workdir ?? '',
-      )
-      if (input === null) return
-      const trimmed = input.trim()
-      await setWorkdir(workspace.id, trimmed === '' ? null : trimmed)
-    },
-    [setWorkdir],
-  )
+  // workdir is a cwd hint only (no scope grant). Opens the WorkdirPrompt modal:
+  // window.prompt is a no-op in the Electron renderer, so a real DOM dialog is
+  // the only thing that actually surfaces an input here.
+  const editWorkdir = useCallback((workspace: Workspace) => {
+    setMenu(null)
+    setWorkdirPromptFor(workspace)
+  }, [])
 
   // The tree itself is currently consumed only by `WorkspaceTile` via the
   // `workspaceNode` prop below. Building it at the top of the component (and
@@ -551,6 +545,17 @@ export function WorkspaceSidebar(): ReactElement {
       )}
       {notesOverlayFor && (
         <NotesOverlay workspaceId={notesOverlayFor} onClose={() => setNotesOverlayFor(null)} />
+      )}
+      {workdirPromptFor && (
+        <WorkdirPrompt
+          workspaceName={workdirPromptFor.name}
+          initialValue={workdirPromptFor.workdir ?? ''}
+          onSubmit={(value) => {
+            void setWorkdir(workdirPromptFor.id, value)
+            setWorkdirPromptFor(null)
+          }}
+          onClose={() => setWorkdirPromptFor(null)}
+        />
       )}
       {trashOpen && (
         <WorkspaceTrashPanel
