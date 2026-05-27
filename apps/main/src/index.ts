@@ -44,6 +44,43 @@ if (!hasExplicitUserDataDir) {
 }
 console.log(`[supa] userData = ${app.getPath('userData')}`)
 
+// WSLg display tuning. The "Exiting GPU process due to errors during
+// initialization" / black-window symptom on WSLg is the GPU process dying on a
+// misconfigured sandbox (Chromium can't set up the SUID sandbox under WSLg),
+// not a missing GPU — WSLg exposes a real d3d12 GPU via /dev/dxg. Running the
+// GPU process without the sandbox lets it initialize and the window render.
+// Scoped to WSL only so a native Linux build keeps the sandbox. Must run before
+// app.whenReady(). Env escapes:
+//   SUPA_GPU=off            -> fall back to software rendering
+//   SUPA_OZONE=wayland|auto -> switch Ozone backend (default x11/XWayland)
+const isWSL = process.env['WSL_DISTRO_NAME'] != null || process.env['WSL_INTEROP'] != null
+if (process.platform === 'linux' && isWSL) {
+  // WSLg has no DRM render node — the GPU is reachable only through Mesa's
+  // d3d12-over-dxg driver. Chromium's GPU process crashes (and the window
+  // renders black) unless: (1) the WSL libs are on the loader path so the GPU
+  // child can load libd3d12/libdxcore, and (2) GL goes through ANGLE on the EGL
+  // backend, which binds to the Mesa d3d12 driver. With both, the GPU process
+  // initializes and the window actually presents. Must run before whenReady().
+  //
+  // Env escapes: SUPA_GPU=off -> software fallback (disable-gpu-compositing);
+  // SUPA_GL / SUPA_ANGLE override the backend; SUPA_OZONE switches the backend.
+  if (!process.env['LD_LIBRARY_PATH']?.includes('/usr/lib/wsl/lib')) {
+    const prev = process.env['LD_LIBRARY_PATH']
+    process.env['LD_LIBRARY_PATH'] = prev ? `/usr/lib/wsl/lib:${prev}` : '/usr/lib/wsl/lib'
+  }
+  if (process.env['SUPA_GPU'] === 'off') {
+    app.disableHardwareAcceleration()
+    app.commandLine.appendSwitch('disable-gpu-compositing')
+  } else {
+    app.commandLine.appendSwitch('ignore-gpu-blocklist')
+    app.commandLine.appendSwitch('use-gl', process.env['SUPA_GL'] ?? 'angle')
+    app.commandLine.appendSwitch('use-angle', process.env['SUPA_ANGLE'] ?? 'gl-egl')
+  }
+  if (process.env['SUPA_OZONE']) {
+    app.commandLine.appendSwitch('ozone-platform', process.env['SUPA_OZONE'])
+  }
+}
+
 let mainWindow: BrowserWindow | null = null
 
 const APP_TITLE = `SupaWorkspace - ${app.isPackaged ? 'PROD' : 'DEV'}`

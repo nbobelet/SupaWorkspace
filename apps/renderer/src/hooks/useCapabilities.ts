@@ -8,6 +8,16 @@ let inflight: Promise<CapabilitiesResponse> | null = null
 
 function load(): Promise<CapabilitiesResponse> {
   if (cache) return Promise.resolve(cache)
+  if (typeof window === 'undefined' || !window.ws) {
+    // No preload bridge — typically the dev server opened in a plain browser
+    // instead of the Electron window. The app is Electron-only; degrade to the
+    // safe default instead of hard-crashing the render with a cryptic error.
+    console.warn(
+      '[capabilities] window.ws is undefined — preload bridge not injected. ' +
+        'Open the Electron window (pnpm dev), not a browser tab. Defaulting to { wsl: false }.',
+    )
+    return Promise.resolve({ wsl: false })
+  }
   if (!inflight) {
     inflight = window.ws.capabilities.get().then((caps) => {
       cache = caps
