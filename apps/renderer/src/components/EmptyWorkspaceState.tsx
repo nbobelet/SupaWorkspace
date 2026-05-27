@@ -1,7 +1,8 @@
 import { useCallback, type ReactElement } from 'react'
-import { Terminal, Sparkles, FolderPlus } from 'lucide-react'
+import { Terminal, TerminalSquare, Sparkles, FolderPlus } from 'lucide-react'
 import { useWorkspaceStore } from '../state/workspaceStore'
 import { useOpenWorkspace } from '../hooks/useOpenWorkspace'
+import { useCapabilities } from '../hooks/useCapabilities'
 import { addSessionWithFocus, activateSession } from '../lib/sessionFocus'
 import type { SessionType } from '@shared/session'
 import { useSessionStore, type RendererSession } from '../state/sessionStore'
@@ -15,6 +16,7 @@ export function EmptyWorkspaceState({ pendingSessions }: EmptyWorkspaceStateProp
   const workspaces = useWorkspaceStore((s) => s.workspaces)
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId)
   const openWorkspace = useOpenWorkspace()
+  const { wsl: wslAvailable } = useCapabilities()
 
   const spawn = useCallback(
     async (type: SessionType) => {
@@ -55,8 +57,14 @@ export function EmptyWorkspaceState({ pendingSessions }: EmptyWorkspaceStateProp
         </p>
 
         {hasPending && (
-          <section className="flex w-full flex-col gap-1.5 rounded-md border border-border bg-bg-elevated p-3" aria-labelledby="restore-heading">
-            <h2 id="restore-heading" className="mb-0.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted">
+          <section
+            className="flex w-full flex-col gap-1.5 rounded-md border border-border bg-bg-elevated p-3"
+            aria-labelledby="restore-heading"
+          >
+            <h2
+              id="restore-heading"
+              className="mb-0.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted"
+            >
               Restore from previous session
             </h2>
             {pendingSessions.map((s) => (
@@ -95,9 +103,21 @@ export function EmptyWorkspaceState({ pendingSessions }: EmptyWorkspaceStateProp
             <Sparkles size={16} aria-hidden="true" />
             <span>New Claude</span>
           </button>
+          {wslAvailable && (
+            <button
+              type="button"
+              onClick={() => void spawn('wsl')}
+              className="flex flex-1 items-center justify-center gap-2 rounded-md border border-border bg-bg-elevated px-4 py-2 text-sm hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
+              <TerminalSquare size={16} aria-hidden="true" />
+              <span>WSL: Ubuntu</span>
+            </button>
+          )}
         </div>
         <p className="text-[10px] text-muted">
-          <kbd className="rounded border border-border bg-bg-elevated px-1 py-0.5 font-mono">Ctrl+T</kbd>{' '}
+          <kbd className="rounded border border-border bg-bg-elevated px-1 py-0.5 font-mono">
+            Ctrl+T
+          </kbd>{' '}
           spawns the last-used type.
         </p>
         <div className="mt-2 flex w-full flex-col items-center gap-1 border-t border-border pt-4">

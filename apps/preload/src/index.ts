@@ -38,6 +38,7 @@ import type {
   ExplorerSearchResponse,
   VoiceTranscribeRequest,
   VoiceTranscribeResponse,
+  CapabilitiesResponse,
 } from '@shared/ipc'
 import type { SessionSnapshotListResponse, SessionSnapshotClearResponse } from '@shared/snapshot'
 import type {
@@ -194,6 +195,9 @@ const api = {
   voice: {
     transcribe: (req: VoiceTranscribeRequest): Promise<VoiceTranscribeResponse> =>
       ipcRenderer.invoke(IpcChannel.VoiceTranscribe, req),
+  },
+  capabilities: {
+    get: (): Promise<CapabilitiesResponse> => ipcRenderer.invoke(IpcChannel.CapabilitiesGet),
   },
 }
 

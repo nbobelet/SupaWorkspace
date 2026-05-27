@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const SessionType = z.enum(['claude', 'shell'])
+export const SessionType = z.enum(['claude', 'shell', 'wsl'])
 export type SessionType = z.infer<typeof SessionType>
 
 export const SessionState = z.enum(['idle', 'running', 'asking', 'done', 'ending'])

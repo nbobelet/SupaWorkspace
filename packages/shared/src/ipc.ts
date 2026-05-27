@@ -56,6 +56,7 @@ export const IpcChannel = {
   ExplorerSearch: 'explorer:search',
   ExplorerSearchCancel: 'explorer:search-cancel',
   VoiceTranscribe: 'voice:transcribe',
+  CapabilitiesGet: 'capabilities:get',
 } as const
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel]
 
@@ -138,6 +139,16 @@ export const SessionFocusEvent = z.object({
   workspaceId: z.string().uuid().optional(),
 })
 export type SessionFocusEvent = z.infer<typeof SessionFocusEvent>
+
+/**
+ * Host capabilities probed once at startup so the renderer can hide launch
+ * affordances for shells the OS can't provide. `wsl` is true only on win32
+ * with `wsl.exe` resolvable on PATH — never crash a host without WSL.
+ */
+export const CapabilitiesResponse = z.object({
+  wsl: z.boolean(),
+})
+export type CapabilitiesResponse = z.infer<typeof CapabilitiesResponse>
 
 export const WorkspaceOpenResponse = z.object({
   workspace: Workspace.nullable(),

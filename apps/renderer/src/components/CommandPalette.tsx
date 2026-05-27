@@ -6,6 +6,7 @@ import { useScopedOrder, useSessionStore } from '../state/sessionStore'
 import { useWorkspaceStore } from '../state/workspaceStore'
 import { addSessionWithFocus } from '../lib/sessionFocus'
 import { closeSession } from '../lib/closeSession'
+import { useCapabilities } from '../hooks/useCapabilities'
 import type { SessionType } from '@shared/session'
 
 export function CommandPalette(): ReactElement | null {
@@ -20,6 +21,7 @@ export function CommandPalette(): ReactElement | null {
   const setActiveSession = useSessionStore((s) => s.setActive)
   const activeId = useSessionStore((s) => s.activeId)
   const scopedOrder = useScopedOrder()
+  const { wsl: wslAvailable } = useCapabilities()
 
   const close = useCallback(() => setOpen(false), [setOpen])
 
@@ -63,11 +65,7 @@ export function CommandPalette(): ReactElement | null {
         onClick={(e) => e.stopPropagation()}
         className="mt-24 w-[520px] overflow-hidden rounded-lg border border-border bg-bg-elevated shadow-2xl"
       >
-        <Command
-          label="Command palette"
-          loop
-          className="flex flex-col"
-        >
+        <Command label="Command palette" loop className="flex flex-col">
           <Command.Input
             autoFocus
             placeholder="Jump to workspace, session, or action…"
@@ -99,6 +97,18 @@ export function CommandPalette(): ReactElement | null {
               >
                 + New Claude session
               </PaletteItem>
+              {wslAvailable && (
+                <PaletteItem
+                  value="new-wsl"
+                  disabled={!activeWorkspaceId}
+                  onSelect={() => {
+                    void spawn('wsl')
+                    close()
+                  }}
+                >
+                  + New WSL: Ubuntu session
+                </PaletteItem>
+              )}
               <PaletteItem
                 value="rename-tab"
                 disabled={!activeId}

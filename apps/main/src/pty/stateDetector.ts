@@ -17,6 +17,8 @@ const IDLE_DEBOUNCE_MS = 400
 // shorter fallback to feel responsive between render passes.
 const FALLBACK_IDLE_MS: Record<SessionType, number> = {
   shell: 10000,
+  // wsl is shell-class: bursty build output, same long lull before idle.
+  wsl: 10000,
   claude: 2000,
 }
 // Visual pulse duration when Notifier flags a request-complete. Independent
