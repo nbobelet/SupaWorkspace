@@ -28,7 +28,7 @@ export function registerSessionIpc(opts: {
     if (!workspace) throw new Error(`Unknown workspace: ${req.workspaceId}`)
     const config = sessionManager.spawn({
       workspaceId: workspace.id,
-      cwd: getEffectiveCwd(workspace),
+      cwd: getEffectiveCwd(workspace, req.type),
       type: req.type,
       cols: req.cols,
       rows: req.rows,

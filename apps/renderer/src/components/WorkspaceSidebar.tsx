@@ -363,7 +363,7 @@ export function WorkspaceSidebar(): ReactElement {
     async (workspace: Workspace) => {
       setMenu(null)
       const input = window.prompt(
-        `Working directory for "${workspace.name}" (blank to clear):`,
+        `Working directory for "${workspace.name}" (blank to clear).\nWSL sessions accept a Linux path, e.g. /home/nico/proj:`,
         workspace.workdir ?? '',
       )
       if (input === null) return
