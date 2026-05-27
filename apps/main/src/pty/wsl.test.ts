@@ -30,6 +30,23 @@ describe('resolveWslCommand', () => {
     expect(resolved.label).toBe('Ubuntu (WSL)')
   })
 
+  it('wraps an inner command past -- so it runs inside the distro at cwd', () => {
+    mockedFindOnPath.mockReturnValue('C:\\Windows\\System32\\wsl.exe')
+
+    const resolved = resolveWslCommand('/home/nico/projet', ['bash', '-lic', 'claude'])
+
+    expect(resolved.args).toEqual([
+      '-d',
+      'Ubuntu',
+      '--cd',
+      '/home/nico/projet',
+      '--',
+      'bash',
+      '-lic',
+      'claude',
+    ])
+  })
+
   it('throws a clear error when wsl.exe is not installed (graceful, no crash)', () => {
     mockedFindOnPath.mockReturnValue(null)
 

@@ -69,7 +69,19 @@ export class SessionManager {
    * Every other case launches in the logical cwd unchanged.
    */
   private launchCwd(type: SessionType, cwd: string): string {
-    return type === 'wsl' && cwd.startsWith('/') ? homedir() : cwd
+    return this.runsInWsl(type, cwd) && cwd.startsWith('/') ? homedir() : cwd
+  }
+
+  /**
+   * Whether this session launches *inside* the WSL distro (host process is
+   * wsl.exe). Always true for `wsl`; true for `claude` only when the target is
+   * a Linux path, in which case claude runs in the distro rather than via the
+   * Windows claude.exe. Everything else runs natively on the host.
+   */
+  private runsInWsl(type: SessionType, cwd: string): boolean {
+    if (type === 'wsl') return true
+    if (type === 'claude') return cwd.startsWith('/')
+    return false
   }
 
   /**
@@ -266,6 +278,13 @@ export class SessionManager {
     label: string
   } {
     if (type === 'claude') {
+      // A Linux target runs claude *inside* the distro, not via the Windows
+      // claude.exe. `bash -lic` gives a login+interactive shell so the distro's
+      // PATH (nvm, ~/.local/bin, etc.) is sourced and `claude` resolves.
+      if (cwd.startsWith('/')) {
+        const wsl = resolveWslCommand(cwd, ['bash', '-lic', 'claude'])
+        return { command: wsl.command, args: wsl.args, label: label ?? 'claude' }
+      }
       const claudeCmd = this.resolveClaudeBinary()
       if (!claudeCmd) {
         throw new Error(

@@ -35,14 +35,17 @@ function isWslPath(path: string | null): path is string {
  *
  * For `wsl` sessions a Linux `workdir` is an explicit cwd hint for the distro
  * and overrides a Windows `rootPath` (which `--cd` would otherwise mount under
- * /mnt/c); a Linux `rootPath` is honored too. These never widen the Windows-side
- * scope — that boundary does not cross into the distro (see resolveWslCommand).
+ * /mnt/c); a Linux `rootPath` is honored too. `claude` sessions follow the same
+ * rule: a Linux path makes claude run inside the distro (see SessionManager
+ * resolveCommand), so it must surface here rather than being rejected by
+ * usableDir. These never widen the Windows-side scope — that boundary does not
+ * cross into the distro (see resolveWslCommand).
  */
 export function getEffectiveCwd(
   ws: Pick<Workspace, 'rootPath' | 'workdir'>,
   type?: SessionType,
 ): string {
-  if (type === 'wsl') {
+  if (type === 'wsl' || type === 'claude') {
     if (isWslPath(ws.workdir)) return ws.workdir
     if (isWslPath(ws.rootPath)) return ws.rootPath
   }
