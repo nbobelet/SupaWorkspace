@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { homedir } from 'node:os'
 import { spawn as ptySpawn, type IPty } from '@homebridge/node-pty-prebuilt-multiarch'
 import type { SessionConfig, SessionState, SessionType } from '@shared/session'
 import { findOnPath } from './findOnPath'
@@ -46,35 +47,77 @@ export class SessionManager {
     label?: string
   }): SessionConfig {
     const sessionId = randomUUID()
-    const { command, args, label } = this.resolveCommand(opts.type, opts.label, opts.cwd)
+    const config = this.startPty(
+      sessionId,
+      opts.workspaceId,
+      opts.type,
+      opts.cwd,
+      opts.cols,
+      opts.rows,
+      opts.label,
+    )
+    this.events.onSessionsChanged?.(this.list())
+    return config
+  }
+
+  /**
+   * The Win32 working directory the spawned *process* launches in — distinct
+   * from the logical session cwd. For a WSL session pointed at a Linux path,
+   * `wsl.exe` (a Win32 process) cannot launch in a distro path (ENOENT): the
+   * Linux path is handed to the distro via `--cd` (see resolveWslCommand), and
+   * the host process itself starts in a guaranteed-valid Win32 dir (homedir).
+   * Every other case launches in the logical cwd unchanged.
+   */
+  private launchCwd(type: SessionType, cwd: string): string {
+    return type === 'wsl' && cwd.startsWith('/') ? homedir() : cwd
+  }
+
+  /**
+   * Creates a PTY for `sessionId` and registers it as the live session under
+   * that id, wiring data/exit handlers. Shared by `spawn` (fresh id) and
+   * `respawn` (same id, new cwd). Does NOT emit `onSessionsChanged` — the
+   * caller decides when the session list is observably different.
+   */
+  private startPty(
+    sessionId: string,
+    workspaceId: string,
+    type: SessionType,
+    cwd: string,
+    cols: number,
+    rows: number,
+    label?: string,
+  ): SessionConfig {
+    const resolved = this.resolveCommand(type, label, cwd)
+    const { command } = resolved
 
     // Inject OSC 133 shell integration for real shells so the command
     // lifecycle (;C/;D) drives session state authoritatively. claude is a TUI
     // (input-driven, no shell integration) and is left untouched. wsl is
     // shell-class but no-ops here: integration keys off the command name and
     // wsl.exe matches neither pwsh nor bash (see resolveWslCommand).
-    const spawnArgs = opts.type === 'claude' ? args : applyShellIntegration(command, args)
+    const spawnArgs =
+      type === 'claude' ? resolved.args : applyShellIntegration(command, resolved.args)
 
     const pty = ptySpawn(command, spawnArgs, {
       name: 'xterm-256color',
-      cols: opts.cols,
-      rows: opts.rows,
-      cwd: opts.cwd,
+      cols,
+      rows,
+      cwd: this.launchCwd(type, cwd),
       env: process.env as Record<string, string>,
     })
 
     const config: SessionConfig = {
       id: sessionId,
-      workspaceId: opts.workspaceId,
-      type: opts.type,
-      label,
-      cwd: opts.cwd,
+      workspaceId,
+      type,
+      label: resolved.label,
+      cwd,
       createdAt: Date.now(),
     }
 
-    const trace = createTraceWriter(sessionId, opts.type)
+    const trace = createTraceWriter(sessionId, type)
     this.sessions.set(sessionId, { pty, config, trace })
-    this.stateDetector.register(sessionId, opts.type)
+    this.stateDetector.register(sessionId, type)
 
     pty.onData((data) => {
       trace?.write(data)
@@ -83,6 +126,12 @@ export class SessionManager {
     })
 
     pty.onExit(({ exitCode, signal }) => {
+      // A respawn replaces the live PTY under the same id, killing the old one.
+      // That stale exit must NOT tear down the session that now owns the id.
+      if (this.sessions.get(sessionId)?.pty !== pty) {
+        trace?.close()
+        return
+      }
       this.stateDetector.onExit(sessionId, exitCode)
       this.events.onExit(sessionId, exitCode, signal)
       trace?.close()
@@ -91,8 +140,43 @@ export class SessionManager {
       this.events.onSessionsChanged?.(this.list())
     })
 
-    this.events.onSessionsChanged?.(this.list())
     return config
+  }
+
+  /**
+   * Respawns every live session of `type` in `workspaceId` on `cwd`. A PTY's
+   * cwd is immutable post-spawn, so following a workdir change means kill +
+   * respawn. The session keeps its id (the renderer pane stays bound — no
+   * rebind), its cols/rows, and its label; only the process restarts on the
+   * new cwd. Returns the number of sessions respawned.
+   */
+  respawnWorkspaceSessions(workspaceId: string, type: SessionType, cwd: string): number {
+    let respawned = 0
+    for (const [id, session] of this.sessions) {
+      if (session.config.workspaceId === workspaceId && session.config.type === type) {
+        this.respawn(id, cwd)
+        respawned += 1
+      }
+    }
+    if (respawned > 0) this.events.onSessionsChanged?.(this.list())
+    return respawned
+  }
+
+  private respawn(sessionId: string, cwd: string): void {
+    const session = this.sessions.get(sessionId)
+    if (!session) return
+    const { workspaceId, type, label } = session.config
+    const { cols, rows } = session.pty
+    // Tear down the old PTY before re-registering: its async exit is neutralised
+    // by the identity guard in startPty's onExit (current pty !== this pty).
+    session.trace?.close()
+    try {
+      session.pty.kill()
+    } catch (err) {
+      console.warn(`[pty] kill during respawn failed for ${sessionId}`, err)
+    }
+    this.stateDetector.unregister(sessionId)
+    this.startPty(sessionId, workspaceId, type, cwd, cols, rows, label)
   }
 
   write(sessionId: string, data: string): void {

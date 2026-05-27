@@ -13,9 +13,11 @@ export function isWslAvailable(): boolean {
 /**
  * Builds the spawn command for the hardcoded WSL: Ubuntu session.
  *
- * `--cd <cwd>` hands the launch directory (a Windows path, already scoped to
- * the workspace root by `getEffectiveCwd`) to WSL, which translates it to the
- * distro's mount. SCOPE NOTE: that scoping ends at launch. Once inside the
+ * `--cd <cwd>` hands the launch directory to WSL. `cwd` is either a Windows
+ * path (scoped to the workspace root by `getEffectiveCwd`, which WSL mounts
+ * under /mnt) or a native Linux path the distro resolves directly — the host
+ * process itself launches in a Win32 dir regardless (see SessionManager.launchCwd).
+ * SCOPE NOTE: that scoping ends at launch. Once inside the
  * distro the user can `cd /home`, reach `\\wsl$\…`, the full Linux userland —
  * the Windows-side `workspace.rootPath` boundary does NOT cross into WSL.
  * Treat `\\wsl$\…` as out-of-scope for any file/explorer feature.

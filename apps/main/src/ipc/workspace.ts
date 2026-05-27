@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { resolveWithinBase } from '../workspace/validatePath'
+import { getEffectiveCwd } from '../workspace/getEffectiveCwd'
 import type { BrowserWindow } from 'electron'
 import { dialog, ipcMain, shell } from 'electron'
 import type {
@@ -108,7 +109,17 @@ export function registerWorkspaceIpc(opts: {
 
   ipcMain.handle(IpcChannel.WorkspaceSetWorkdir, async (_, raw): Promise<Workspace> => {
     const req = WorkspaceSetWorkdirRequest.parse(raw)
-    return workspaceStore.setWorkdir(req.workspaceId, req.workdir)
+    const before = workspaceStore.getById(req.workspaceId)
+    const updated = workspaceStore.setWorkdir(req.workspaceId, req.workdir)
+    // A PTY's cwd is immutable, so live sessions don't follow a workdir change
+    // on their own. Only WSL sessions are affected: a Linux workdir overrides
+    // their effective cwd (getEffectiveCwd), whereas cmd/pwsh keep rootPath.
+    // Respawn them (same id, renderer pane stays bound) so the running shell
+    // lands in the new directory; new sessions already pick it up via spawn.
+    if (before && before.workdir !== updated.workdir) {
+      sessionManager.respawnWorkspaceSessions(updated.id, 'wsl', getEffectiveCwd(updated, 'wsl'))
+    }
+    return updated
   })
 
   ipcMain.handle(
