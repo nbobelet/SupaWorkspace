@@ -100,6 +100,30 @@ describe('SessionManager.spawn — launch cwd by session type × path style', ()
     expect(spawnCwd(0)).toBe(WIN)
     expect(config.cwd).toBe(WIN)
   })
+
+  it('claude + Linux path: runs claude inside the distro via wsl.exe, launches in homedir', () => {
+    const mgr = new SessionManager(noopEvents())
+    const config = mgr.spawn({ workspaceId: 'w1', cwd: LINUX, type: 'claude', cols: 80, rows: 24 })
+
+    // Host process is wsl.exe, not the Windows claude.exe ...
+    expect(mockedSpawn.mock.calls[0]?.[0]).toContain('wsl.exe')
+    // ... claude runs in the distro at the Linux path through a login shell ...
+    expect(spawnArgs(0)).toEqual(['-d', 'Ubuntu', '--cd', LINUX, '--', 'bash', '-lic', 'claude'])
+    // ... the wsl.exe process itself launches in a valid Win32 dir ...
+    expect(spawnCwd(0)).toBe(homedir())
+    // ... and the tab keeps its claude identity + logical cwd.
+    expect(config.label).toBe('claude')
+    expect(config.cwd).toBe(LINUX)
+  })
+
+  it('claude + Windows path: still runs the host claude.exe in the Windows path', () => {
+    const mgr = new SessionManager(noopEvents())
+    const config = mgr.spawn({ workspaceId: 'w1', cwd: WIN, type: 'claude', cols: 80, rows: 24 })
+
+    expect(mockedSpawn.mock.calls[0]?.[0]).toBe('C:\\bin\\claude.exe')
+    expect(spawnCwd(0)).toBe(WIN)
+    expect(config.cwd).toBe(WIN)
+  })
 })
 
 describe('SessionManager.respawnWorkspaceSessions — follow a workdir change', () => {

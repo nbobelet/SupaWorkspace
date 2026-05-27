@@ -37,6 +37,18 @@ describe('getEffectiveCwd', () => {
     })
   })
 
+  describe('claude sessions', () => {
+    it('uses a Linux workdir verbatim, overriding a Windows rootPath (runs in distro)', () => {
+      expect(getEffectiveCwd({ rootPath: WIN_ROOT, workdir: '/home/nico/proj' }, 'claude')).toBe(
+        '/home/nico/proj',
+      )
+    })
+
+    it('falls through to the host chain when no Linux path is present', () => {
+      expect(getEffectiveCwd({ rootPath: REAL_DIR, workdir: null }, 'claude')).toBe(REAL_DIR)
+    })
+  })
+
   it('does NOT special-case Linux paths for non-wsl sessions', () => {
     // A bare "/home/nico/proj" that does not exist here is rejected for a shell
     // session -> homedir, not passed through.

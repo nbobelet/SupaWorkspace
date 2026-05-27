@@ -27,7 +27,10 @@ export function isWslAvailable(): boolean {
  * inside the distro, so integration would need a wslpath-translated rcfile.
  * That is Tier-B work. WSL sessions ride the heuristic state path like cmd.exe.
  */
-export function resolveWslCommand(cwd: string): {
+export function resolveWslCommand(
+  cwd: string,
+  innerCommand?: string[],
+): {
   command: string
   args: string[]
   label: string
@@ -36,9 +39,15 @@ export function resolveWslCommand(cwd: string): {
   if (!wsl) {
     throw new Error('wsl.exe not found in PATH. Install WSL2 + an Ubuntu distro to use this shell.')
   }
+  // No `innerCommand` -> WSL launches the distro's default login shell
+  // interactively. With one (e.g. claude), wrap it past `--` so it runs
+  // *inside* the distro at `cwd`; the caller is responsible for picking a form
+  // that resolves the binary (a login+interactive shell sources the PATH).
+  const args = ['-d', WSL_DISTRO, '--cd', cwd]
+  if (innerCommand && innerCommand.length > 0) args.push('--', ...innerCommand)
   return {
     command: wsl,
-    args: ['-d', WSL_DISTRO, '--cd', cwd],
+    args,
     label: WSL_LABEL,
   }
 }
