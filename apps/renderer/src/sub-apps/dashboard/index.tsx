@@ -20,6 +20,7 @@ interface SessionRecap {
 const TYPE_LABEL: Record<SessionType, string> = {
   claude: 'Claude',
   shell: 'Shell',
+  wsl: 'WSL',
 }
 
 /**
@@ -50,7 +51,7 @@ export function DashboardPane({ workspaceId }: DashboardPaneProps): ReactElement
   const urgent = useMemo(() => recaps.filter((r) => isUrgent(r.status)), [recaps])
 
   const byType = useMemo(() => {
-    const counts: Record<SessionType, number> = { claude: 0, shell: 0 }
+    const counts: Record<SessionType, number> = { claude: 0, shell: 0, wsl: 0 }
     for (const { session } of recaps) counts[session.type] += 1
     return counts
   }, [recaps])

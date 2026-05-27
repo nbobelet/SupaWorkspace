@@ -24,6 +24,7 @@ import { registerVoiceIpc } from './ipc/voice'
 import { StubTranscriber, WhisperWorkerTranscriber } from './voice/Transcriber'
 import { VoiceService } from './voice/VoiceService'
 import { registerExplorerIpc } from './explorer'
+import { registerCapabilitiesIpc } from './ipc/capabilities'
 import { IpcChannel } from '@shared/ipc'
 import { WORKSPACE_RETENTION_MS } from '@shared/workspace'
 
@@ -190,6 +191,7 @@ void app.whenReady().then(async () => {
   })
   registerVoiceIpc({ voiceService })
   registerExplorerIpc({ workspaceStore })
+  registerCapabilitiesIpc()
 
   createWindow()
 

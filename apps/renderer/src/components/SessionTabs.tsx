@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
-import { Terminal, Sparkles } from 'lucide-react'
+import { Terminal, TerminalSquare, Sparkles } from 'lucide-react'
 import { TerminalTypeIcon } from './TerminalTypeIcon'
+import { useCapabilities } from '../hooks/useCapabilities'
 import {
   DndContext,
   KeyboardSensor,
@@ -50,6 +51,7 @@ export function SessionTabs(): ReactElement {
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const workspaces = useWorkspaceStore((s) => s.workspaces)
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId)
+  const { wsl: wslAvailable } = useCapabilities()
   const scopedOrder = useScopedOrder()
   const mostUrgentId = useHighestPriorityTabId()
   const setLayoutMode = useLayoutStore((s) => s.setMode)
@@ -279,6 +281,18 @@ export function SessionTabs(): ReactElement {
           <Sparkles size={14} aria-hidden="true" />
           <span>Claude</span>
         </button>
+        {wslAvailable && (
+          <button
+            type="button"
+            onClick={() => void spawn('wsl')}
+            disabled={!activeWorkspaceId}
+            className="flex h-7 items-center gap-1.5 rounded-md border border-border bg-bg-elevated px-2.5 text-xs font-medium hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="New WSL Ubuntu session"
+          >
+            <TerminalSquare size={14} aria-hidden="true" />
+            <span>WSL</span>
+          </button>
+        )}
       </div>
 
       {activeWorkspace && (
