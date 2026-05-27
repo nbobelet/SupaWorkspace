@@ -21,10 +21,12 @@ export function sortWorkspacesHomeFirst<T extends Pick<Workspace, 'kind'>>(works
 }
 
 /**
- * What to show under a workspace's name in the sidebar / tabs. Folder
- * workspaces show their rootPath. Home shows its cwd hint (workdir) when set,
- * otherwise a neutral "Global — no folder" affordance label.
+ * What to show under a workspace's name in the sidebar / tabs. An explicit
+ * `workdir` override wins: it's what the user configured and where WSL sessions
+ * spawn, so hiding it behind rootPath made a saved workdir look like a no-op.
+ * Else the folder's rootPath; else a neutral "Global — no folder" label (Home
+ * with no hint).
  */
 export function effectiveCwdLabel(ws: Pick<Workspace, 'rootPath' | 'workdir'>): string {
-  return ws.rootPath ?? ws.workdir ?? 'Global — no folder'
+  return ws.workdir ?? ws.rootPath ?? 'Global — no folder'
 }

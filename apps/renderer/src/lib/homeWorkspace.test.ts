@@ -46,8 +46,14 @@ describe('sortWorkspacesHomeFirst', () => {
 })
 
 describe('effectiveCwdLabel', () => {
-  it('shows rootPath for a folder workspace', () => {
+  it('shows rootPath for a folder workspace with no workdir override', () => {
     expect(effectiveCwdLabel(folder)).toBe('/tmp/proj')
+  })
+
+  it('shows the workdir override over rootPath when set (e.g. a Linux cwd for WSL)', () => {
+    expect(effectiveCwdLabel({ rootPath: 'E:\\PROJETS\\X', workdir: '/home/nico/proj' })).toBe(
+      '/home/nico/proj',
+    )
   })
 
   it('shows the workdir hint for a null-rootPath Home with a workdir', () => {
