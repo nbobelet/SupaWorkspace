@@ -5,7 +5,6 @@ import { PaneMosaic } from './components/PaneMosaic'
 import { WorkspaceSidebar } from './components/WorkspaceSidebar'
 import { SessionTabs } from './components/SessionTabs'
 import { LayoutSwitcher } from './components/LayoutSwitcher'
-import { TodoPane } from './sub-apps/todo'
 import { DashboardPane } from './sub-apps/dashboard'
 import { ExplorerPane } from './sub-apps/explorer'
 import { SettingsPanel } from './components/settings/SettingsPanel'
@@ -36,12 +35,11 @@ export function App(): ReactElement {
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace)
   const activeSubApp = useActiveSubApp(activeWorkspaceId ?? '')
-  const isTodoActive = !!activeWorkspaceId && activeSubApp === 'todo'
   const isDashboardActive = !!activeWorkspaceId && activeSubApp === 'dashboard'
   const isExplorerActive = !!activeWorkspaceId && activeSubApp === 'explorer'
   // Terminal chrome (tab strip + layout switcher) shows only for the supatty
-  // sub-app. TODO, Dashboard, and Explorer are full-pane views that own the body.
-  const isTerminalView = !isTodoActive && !isDashboardActive && !isExplorerActive
+  // sub-app. Dashboard and Explorer are full-pane views that own the body.
+  const isTerminalView = !isDashboardActive && !isExplorerActive
 
   const setActive = useSessionStore((s) => s.setActive)
   const activeId = useSessionStore((s) => s.activeId)
@@ -310,8 +308,6 @@ export function App(): ReactElement {
         <div className="flex-1 overflow-hidden">
           {isDashboardActive && activeWorkspaceId ? (
             <DashboardPane workspaceId={activeWorkspaceId} />
-          ) : isTodoActive && activeWorkspaceId ? (
-            <TodoPane workspaceId={activeWorkspaceId} />
           ) : isExplorerActive && activeWorkspaceId ? (
             <ExplorerPane workspaceId={activeWorkspaceId} />
           ) : (

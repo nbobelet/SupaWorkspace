@@ -7,7 +7,7 @@ updated: 2026-05-20
 
 ```
 Workspace (folder | home)
-  └─ Sub-app (supatty | notes | todo | dashboard)
+  └─ Sub-app (supatty | notes | dashboard | explorer)
        └─ Session (PTY instance: state, label, history)
             └─ Type: claude | shell | terminal
 ```

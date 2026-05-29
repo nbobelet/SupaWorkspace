@@ -21,7 +21,6 @@ Canonical entry point for SupaTerminal documentation. Organised by [Diátaxis](h
 | [how-to/browse-files-explorer.md](./how-to/browse-files-explorer.md)         | Browse workspace files in the Explorer: Miller columns, git colors, context menu |
 | [how-to/configure-claude-settings.md](./how-to/configure-claude-settings.md) | Edit per-workspace `.claude/settings.json` (panel + by-hand)                     |
 | [how-to/grant-out-of-scope-path.md](./how-to/grant-out-of-scope-path.md)     | Approve, pre-grant, or revoke a `PathGrant`                                      |
-| [how-to/use-kanban-board.md](./how-to/use-kanban-board.md)                   | Create tasks, move across columns, archive, manage columns, Home aggregated view |
 
 ## Reference — look it up
 

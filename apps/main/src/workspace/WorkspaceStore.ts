@@ -167,7 +167,7 @@ export class WorkspaceStore {
 
   /**
    * Drop soft-deleted workspaces older than `maxAgeMs`. Returns the purged ids
-   * so the caller can cascade sub-app cleanup (notes/todo/supatty) — this store
+   * so the caller can cascade sub-app cleanup (notes/supatty) — this store
    * owns only workspace metadata. Run once on boot.
    */
   purgeExpired(maxAgeMs: number): string[] {

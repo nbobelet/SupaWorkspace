@@ -25,7 +25,6 @@ interface WorkspaceStoreState {
 const SUBAPP_EXPANDED_DEFAULT: Record<SubAppId, boolean> = {
   supatty: true,
   notes: false,
-  todo: false,
   // Dashboard is a leaf view (no expandable children) — collapsed flag is inert
   // but the Record must stay exhaustive over SubAppId.
   dashboard: false,

@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Commits and en
 
 ## [Unreleased]
 
+### Removed
+
+- feat(todo): remove the Todo list / Kanban board sub-app entirely — renderer sub-app, main `TodoStore` + `todo:*` IPC, shared `SubAppId 'todo'` + `@shared/todo` contract, and the dashboard todo aggregation. The dashboard now derives purely from the session store.
+
 ### Docs
 
 - docs: project doc bootstrap — `docs/AUDIT-2026-05-19.md` (audit snapshot), `docs/index.md` (Diátaxis MOC, canonical entry point), `docs/CONVENTIONS.md` (naming, frontmatter, commits, link discipline), `docs/HEALTH.md` (auto-generated freshness telemetry, 60-day observation window before formal policy).

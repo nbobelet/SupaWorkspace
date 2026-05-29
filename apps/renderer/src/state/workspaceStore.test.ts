@@ -33,7 +33,7 @@ describe('setSubAppExpanded', () => {
   it('is a true no-op when an explicit entry already matches the target', () => {
     useWorkspaceStore.setState({
       expandedSubApps: {
-        w1: { supatty: true, notes: false, todo: false, dashboard: false, explorer: false },
+        w1: { supatty: true, notes: false, dashboard: false, explorer: false },
       },
     })
     const before = useWorkspaceStore.getState().expandedSubApps
@@ -46,7 +46,7 @@ describe('setSubAppExpanded', () => {
   it('flips an explicit entry from collapsed to expanded', () => {
     useWorkspaceStore.setState({
       expandedSubApps: {
-        w1: { supatty: false, notes: false, todo: false, dashboard: false, explorer: false },
+        w1: { supatty: false, notes: false, dashboard: false, explorer: false },
       },
     })
 

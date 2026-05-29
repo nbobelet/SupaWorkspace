@@ -66,9 +66,9 @@ describe('computeExpandOnActivate', () => {
   // Sub-app keys (`wsId:subAppId`) live in a separate namespace and must be
   // preserved untouched across an activate.
   it('preserves sub-app keys', () => {
-    const next = computeExpandOnActivate('w2', new Set(['w1', 'w1:supatty', 'w2:todo']))
+    const next = computeExpandOnActivate('w2', new Set(['w1', 'w1:supatty', 'w2:notes']))
     expect(next.has('w1:supatty')).toBe(true)
-    expect(next.has('w2:todo')).toBe(true)
+    expect(next.has('w2:notes')).toBe(true)
     expect(next.has('w1')).toBe(true)
     expect(next.has('w2')).toBe(true)
   })

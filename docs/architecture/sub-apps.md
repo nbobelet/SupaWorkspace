@@ -48,15 +48,15 @@ Each node type carries the fields needed to render it and nothing more:
 `SubAppId` (`packages/shared/src/sub-app.ts`) is a Zod enum that is the exhaustive list of available sub-apps:
 
 ```ts
-export const SubAppId = z.enum(['supatty', 'notes', 'todo', 'dashboard'])
+export const SubAppId = z.enum(['supatty', 'notes', 'dashboard', 'explorer'])
 ```
 
-| `SubAppId`  | What it is                                                                                                            |
-| ----------- | --------------------------------------------------------------------------------------------------------------------- |
-| `supatty`   | Terminal pane — one or more PTY sessions displayed in xterm.js                                                        |
-| `notes`     | Plain-text notes tied to the workspace (persisted via `notes:get` / `notes:set`)                                      |
-| `todo`      | Kanban board — tasks organised in columns, drag-to-reorder (see [use-kanban-board.md](../how-to/use-kanban-board.md)) |
-| `dashboard` | Workspace overview pane                                                                                               |
+| `SubAppId`  | What it is                                                                       |
+| ----------- | -------------------------------------------------------------------------------- |
+| `supatty`   | Terminal pane — one or more PTY sessions displayed in xterm.js                   |
+| `notes`     | Plain-text notes tied to the workspace (persisted via `notes:get` / `notes:set`) |
+| `dashboard` | Workspace overview pane                                                          |
+| `explorer`  | Finder-style Miller-column file browser                                          |
 
 Each sub-app entry in `SubAppId` maps 1:1 to a `SubAppStore` subclass on the main side and a `<SubAppId>.json` file under Electron's `userData` directory.
 
@@ -74,18 +74,6 @@ export const SubAppEnvelope = <T extends z.ZodTypeAny>(dataSchema: T) =>
 ```
 
 The outer file (`<subAppId>.json`) holds one key per workspace UUID. Each workspace therefore has an isolated payload for that sub-app. An unknown workspace id returns the sub-app's default value — it is never persisted as `null` and never throws.
-
----
-
-## Home workspace aggregation
-
-The `home` workspace (`kind: 'home'`) has no `rootPath` and is scoped globally. For the `todo` sub-app, the Home board shows an aggregated view of tasks from **all** workspaces merged in-memory. The aggregation is handled by `mergeTodoStates` (`apps/renderer/src/lib/aggregate.ts`):
-
-- Tasks keep living in their own workspace's store — no parallel storage is created.
-- The merged board uses Home's column set as the canonical column list.
-- `originOf: Map<taskId, workspaceId>` lets the caller route every mutation (update, delete, reorder) back to the owning workspace's store.
-
-Updates made on the Home board go to the correct `workspaceId` via the standard `todo:*` IPC channels.
 
 ---
 
@@ -110,4 +98,3 @@ A sub-app does **not** need its own scrollbar style — apply `.supa-scroll` to 
 - `packages/shared/src/workspace.ts` — `WorkspaceTreeNode` (sidebar tree schema).
 - `apps/renderer/src/sub-apps/` — renderer entry points per sub-app.
 - [workspace-scope.md](./workspace-scope.md) — workspace kinds and scope enforcement.
-- [how-to/use-kanban-board.md](../how-to/use-kanban-board.md) — task-oriented guide for the Todo sub-app.
