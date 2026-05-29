@@ -7,7 +7,6 @@ import { WorkspaceStore } from './workspace/WorkspaceStore'
 import { Notifier } from './notifications/Notifier'
 import { NotesStore } from './notes/NotesStore'
 import { SupaTTYStore } from './supatty/SupaTTYStore'
-import { TodoStore } from './todo/TodoStore'
 import { CmdGuardStore } from './cmd-guard/CmdGuardStore'
 import { BugReportStore } from './bug-report/BugReportStore'
 import { SettingsStore } from './settings/SettingsStore'
@@ -15,7 +14,6 @@ import { registerSessionIpc } from './ipc/session'
 import { registerWorkspaceIpc } from './ipc/workspace'
 import { registerPermissionsIpc } from './ipc/permissions'
 import { registerNotesIpc } from './ipc/notes'
-import { registerTodoIpc } from './ipc/todo'
 import { registerSessionSnapshotIpc } from './ipc/sessionSnapshot'
 import { registerCmdGuardIpc } from './ipc/cmdGuard'
 import { registerBugReportIpc } from './ipc/bugReport'
@@ -158,14 +156,12 @@ void app.whenReady().then(async () => {
   const workspaceStore = new WorkspaceStore()
   const notesStore = new NotesStore()
   const supattyStore = new SupaTTYStore({ userDataDir: app.getPath('userData') })
-  const todoStore = new TodoStore()
 
   // Retention sweep: drop trashed workspaces past the 30-day window and cascade
-  // their sub-app data, so expired trash leaves no orphan notes/todo/supatty.
+  // their sub-app data, so expired trash leaves no orphan notes/supatty.
   for (const purgedId of workspaceStore.purgeExpired(WORKSPACE_RETENTION_MS)) {
     supattyStore.remove(purgedId)
     notesStore.remove(purgedId)
-    todoStore.remove(purgedId)
   }
   const cmdGuardStore = new CmdGuardStore()
   const bugReportStore = new BugReportStore({
@@ -210,12 +206,10 @@ void app.whenReady().then(async () => {
     sessionManager,
     notesStore,
     supattyStore,
-    todoStore,
     getMainWindow,
   })
   registerPermissionsIpc({ workspaceStore, getMainWindow, notifier })
   registerNotesIpc({ notesStore })
-  registerTodoIpc({ todoStore })
   registerSessionSnapshotIpc({ supattyStore })
   registerCmdGuardIpc({ cmdGuardStore })
   registerBugReportIpc({ bugReportStore })

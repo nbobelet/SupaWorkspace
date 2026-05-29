@@ -20,7 +20,7 @@ export interface ExplorerPaneProps {
  * Explorer sub-app root — a macOS-Finder-style Miller-column file browser.
  * Owns no IPC of its own beyond the `window.ws.explorer.*` calls the
  * `useExplorer` hook makes; this component is the view + the `needs-grant`
- * prompt surface. Mirrors the `{ workspaceId }` prop contract of TodoPane /
+ * prompt surface. Mirrors the `{ workspaceId }` prop contract of
  * DashboardPane so it drops into the same App.tsx mount switch.
  */
 export function ExplorerPane({ workspaceId }: ExplorerPaneProps): ReactElement {

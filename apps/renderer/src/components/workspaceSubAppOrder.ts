@@ -7,10 +7,4 @@ import type { SubAppId } from '@shared/sub-app'
  * module so the ordering can be regression-tested without dragging in the
  * sidebar's heavy import graph (dnd-kit / xterm).
  */
-export const SUB_APP_ORDER: readonly SubAppId[] = [
-  'dashboard',
-  'supatty',
-  'explorer',
-  'todo',
-  'notes',
-]
+export const SUB_APP_ORDER: readonly SubAppId[] = ['dashboard', 'supatty', 'explorer', 'notes']

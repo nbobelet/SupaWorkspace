@@ -33,7 +33,6 @@ import type { SessionManager } from '../pty/SessionManager'
 import type { WorkspaceStore } from '../workspace/WorkspaceStore'
 import type { NotesStore } from '../notes/NotesStore'
 import type { SupaTTYStore } from '../supatty/SupaTTYStore'
-import type { TodoStore } from '../todo/TodoStore'
 
 const CLAUDE_MD = 'CLAUDE.md'
 const CLAUDE_SETTINGS = '.claude/settings.json'
@@ -43,11 +42,9 @@ export function registerWorkspaceIpc(opts: {
   sessionManager: SessionManager
   notesStore: NotesStore
   supattyStore: SupaTTYStore
-  todoStore: TodoStore
   getMainWindow: () => BrowserWindow | null
 }): () => void {
-  const { workspaceStore, sessionManager, notesStore, supattyStore, todoStore, getMainWindow } =
-    opts
+  const { workspaceStore, sessionManager, notesStore, supattyStore, getMainWindow } = opts
 
   ipcMain.handle(IpcChannel.WorkspaceList, async (): Promise<WorkspaceListResponse> => {
     return { workspaces: workspaceStore.list() }
@@ -73,7 +70,7 @@ export function registerWorkspaceIpc(opts: {
   ipcMain.handle(IpcChannel.WorkspaceRemove, async (_, raw): Promise<void> => {
     const req = WorkspaceRemoveRequest.parse(raw)
     // Soft delete: kill live sessions but keep the workspace row AND its
-    // sub-app data (notes/todo/supatty) intact so the trash can recover it.
+    // sub-app data (notes/supatty) intact so the trash can recover it.
     // Permanent cleanup happens in WorkspacePurge / retention sweep only.
     sessionManager.killAllInWorkspace(req.workspaceId)
     workspaceStore.softDelete(req.workspaceId)
@@ -98,7 +95,6 @@ export function registerWorkspaceIpc(opts: {
     // the entries become orphans nothing references.
     supattyStore.remove(req.workspaceId)
     notesStore.remove(req.workspaceId)
-    todoStore.remove(req.workspaceId)
     workspaceStore.purge(req.workspaceId)
   })
 

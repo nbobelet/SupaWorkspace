@@ -18,7 +18,6 @@ import {
   FolderTree,
   Home as HomeIcon,
   LayoutDashboard,
-  ListTodo,
   Plus,
   StickyNote,
   Terminal,
@@ -251,13 +250,7 @@ export function WorkspaceSidebar(): ReactElement {
       if (colon !== -1) {
         const wsId = id.slice(0, colon)
         const saId = id.slice(colon + 1)
-        if (
-          saId === 'supatty' ||
-          saId === 'notes' ||
-          saId === 'todo' ||
-          saId === 'dashboard' ||
-          saId === 'explorer'
-        ) {
+        if (saId === 'supatty' || saId === 'notes' || saId === 'dashboard' || saId === 'explorer') {
           toggleSubAppExpandedStore(wsId, saId)
         }
         return
@@ -499,11 +492,6 @@ export function WorkspaceSidebar(): ReactElement {
                   onOpenNotes={(workspaceId) =>
                     setNotesOverlayFor((prev) => (prev === workspaceId ? null : workspaceId))
                   }
-                  onActivateTodo={(workspaceId) => {
-                    setActiveSubApp(workspaceId, 'todo')
-                    setActiveWorkspace(workspaceId)
-                    expandOnActivate(workspaceId)
-                  }}
                   focusedRow={focusedRow}
                   getTreeKeyHandlers={getTreeKeyHandlers}
                   onContextMenu={handleContextMenu}
@@ -592,7 +580,6 @@ interface WorkspaceTileProps {
   onActivateSupatty: (workspaceId: string) => void
   onQuickSpawn: (workspaceId: string) => void
   onOpenNotes: (workspaceId: string) => void
-  onActivateTodo: (workspaceId: string) => void
   focusedRow: RowKey | null
   getTreeKeyHandlers: (node: WorkspaceTreeNode) => TreeKeyHandlers
   onContextMenu: (e: React.MouseEvent, w: Workspace) => void
@@ -621,7 +608,6 @@ function WorkspaceTile({
   onActivateSupatty,
   onQuickSpawn,
   onOpenNotes,
-  onActivateTodo,
   focusedRow,
   getTreeKeyHandlers,
   onContextMenu,
@@ -797,15 +783,13 @@ function WorkspaceTile({
               onActivate={
                 subAppNode.subAppId === 'notes'
                   ? () => onOpenNotes(w.id)
-                  : subAppNode.subAppId === 'todo'
-                    ? () => onActivateTodo(w.id)
-                    : subAppNode.subAppId === 'dashboard'
-                      ? () => onActivateDashboard(w.id)
-                      : subAppNode.subAppId === 'explorer'
-                        ? () => onActivateExplorer(w.id)
-                        : subAppNode.subAppId === 'supatty'
-                          ? () => onActivateSupatty(w.id)
-                          : undefined
+                  : subAppNode.subAppId === 'dashboard'
+                    ? () => onActivateDashboard(w.id)
+                    : subAppNode.subAppId === 'explorer'
+                      ? () => onActivateExplorer(w.id)
+                      : subAppNode.subAppId === 'supatty'
+                        ? () => onActivateSupatty(w.id)
+                        : undefined
               }
               onQuickSpawn={
                 subAppNode.subAppId === 'supatty' ? () => onQuickSpawn(w.id) : undefined
@@ -853,7 +837,6 @@ interface SubAppRowProps {
 const SUB_APP_LABEL: Record<SubAppId, string> = {
   supatty: 'SupaTTY',
   notes: 'Notes',
-  todo: 'TODO',
   dashboard: 'Dashboard',
   explorer: 'Explorer',
 }
@@ -941,8 +924,6 @@ function SubAppRow({
           <span className="shrink-0 text-muted">
             {subAppId === 'supatty' ? (
               <Terminal size={12} aria-hidden="true" />
-            ) : subAppId === 'todo' ? (
-              <ListTodo size={12} aria-hidden="true" />
             ) : subAppId === 'dashboard' ? (
               <LayoutDashboard size={12} aria-hidden="true" />
             ) : subAppId === 'explorer' ? (

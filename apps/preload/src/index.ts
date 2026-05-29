@@ -17,13 +17,6 @@ import type {
   SessionSpawnResponse,
   SessionStateEvent,
   SessionWriteRequest,
-  TodoCreateTaskRequest,
-  TodoDeleteTaskRequest,
-  TodoGetResponse,
-  TodoReorderRequest,
-  TodoSetColumnsRequest,
-  TodoStateResponse,
-  TodoUpdateTaskRequest,
   WorkspaceListDeletedResponse,
   WorkspaceListResponse,
   WorkspaceOpenResponse,
@@ -131,20 +124,6 @@ const api = {
       ipcRenderer.invoke(IpcChannel.NotesGet, { workspaceId }),
     set: (workspaceId: string, content: string): Promise<void> =>
       ipcRenderer.invoke(IpcChannel.NotesSet, { workspaceId, content }),
-  },
-  todo: {
-    get: (workspaceId: string): Promise<TodoGetResponse> =>
-      ipcRenderer.invoke(IpcChannel.TodoGet, { workspaceId }),
-    createTask: (req: TodoCreateTaskRequest): Promise<TodoStateResponse> =>
-      ipcRenderer.invoke(IpcChannel.TodoCreateTask, req),
-    updateTask: (req: TodoUpdateTaskRequest): Promise<TodoStateResponse> =>
-      ipcRenderer.invoke(IpcChannel.TodoUpdateTask, req),
-    deleteTask: (req: TodoDeleteTaskRequest): Promise<TodoStateResponse> =>
-      ipcRenderer.invoke(IpcChannel.TodoDeleteTask, req),
-    reorder: (req: TodoReorderRequest): Promise<TodoStateResponse> =>
-      ipcRenderer.invoke(IpcChannel.TodoReorder, req),
-    setColumns: (req: TodoSetColumnsRequest): Promise<TodoStateResponse> =>
-      ipcRenderer.invoke(IpcChannel.TodoSetColumns, req),
   },
   sessionSnapshot: {
     list: (): Promise<SessionSnapshotListResponse> =>

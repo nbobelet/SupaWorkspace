@@ -26,7 +26,6 @@ function makeOpts() {
     sessionManager: { killAllInWorkspace: vi.fn() },
     notesStore: { remove: vi.fn() },
     supattyStore: { remove: vi.fn() },
-    todoStore: { remove: vi.fn() },
     getMainWindow: () => null,
   }
 }
@@ -34,7 +33,7 @@ function makeOpts() {
 beforeEach(() => handlers.clear())
 
 describe('workspace IPC — soft delete vs purge', () => {
-  it('WorkspaceRemove soft-deletes and leaves notes/todo/supatty data INTACT', async () => {
+  it('WorkspaceRemove soft-deletes and leaves notes/supatty data INTACT', async () => {
     const { registerWorkspaceIpc } = await import('./workspace')
     const opts = makeOpts()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -46,7 +45,6 @@ describe('workspace IPC — soft delete vs purge', () => {
     expect(opts.workspaceStore.softDelete).toHaveBeenCalledWith(WS)
     // Tony's invariant: sub-app payloads survive a soft delete.
     expect(opts.notesStore.remove).not.toHaveBeenCalled()
-    expect(opts.todoStore.remove).not.toHaveBeenCalled()
     expect(opts.supattyStore.remove).not.toHaveBeenCalled()
     expect(opts.workspaceStore.purge).not.toHaveBeenCalled()
   })
@@ -60,7 +58,6 @@ describe('workspace IPC — soft delete vs purge', () => {
     await handlers.get(IpcChannel.WorkspacePurge)?.({}, { workspaceId: WS })
 
     expect(opts.notesStore.remove).toHaveBeenCalledWith(WS)
-    expect(opts.todoStore.remove).toHaveBeenCalledWith(WS)
     expect(opts.supattyStore.remove).toHaveBeenCalledWith(WS)
     expect(opts.workspaceStore.purge).toHaveBeenCalledWith(WS)
   })
